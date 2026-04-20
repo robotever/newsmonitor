@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(npm run *)",
+      "Read(//tmp/**)",
+      "Bash(npx vue-tsc *)",
+      "Bash(curl -s -H \"User-Agent: Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36\" \"https://www.cls.cn/api/depth?app=CailianpressWeb&rn=20&sv=8.4.6\")",
+      "Bash(curl -s -H \"User-Agent: Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36\" \"https://www.cls.cn/nodeapi/updateDepthList?app=CailianpressWeb&refresh_type=1&rn=20&sv=8.4.6\")",
+      "Bash(curl -s \"https://cache.thepaper.cn/contentapi/wwwIndex/rightSidebar\")",
+      "Bash(curl -s -H \"User-Agent: Mozilla/5.0\" \"https://np-mobileapi.eastmoney.com/communication/pc/recommends?type=1&page=1&pagesize=20&version=2\")",
+      "Bash(curl -s -H \"User-Agent: Mozilla/5.0\" \"https://np-listapi.eastmoney.com/comm/wap/getListInfo?type=1&page=1&pagesize=20&mediaid=88\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(list\\(d['data'].keys\\(\\)\\)\\)\")",
+      "Bash(curl -s \"https://github.com/robotever/newsnow/blob/main/server/sources/gelonghui.ts\")",
+      "Bash(curl -s -H \"User-Agent: Mozilla/5.0\" \"https://np-anotice-stock.eastmoney.com/api/security/ann?sr=-1&page_size=20&page_index=1&ann_type=SHA%2CSZA%2CBJA%2CCYB%2CKCB&client_source=web\")",
+      "Bash(curl -s -H \"User-Agent: Mozilla/5.0\" \"https://np-listapi.eastmoney.com/comm/web/getListInfo?type=1&page=1&pagesize=20&client=web&mTypeAndCode=0%7C1&callback=&_=1\")",
+      "Bash(curl -s -H \"User-Agent: Mozilla/5.0\" \"https://finance.eastmoney.com/a/cgsyl.html\")",
+      "Bash(curl -s -H \"User-Agent: Mozilla/5.0\" \"https://www.eastmoney.com/a/cgsyl.html\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); items=d['LivesList'][:2]; [print\\(list\\(i.keys\\(\\)\\)\\) for i in items]; print\\(items[0]\\)\")",
+      "Bash(curl -s -H \"User-Agent: Mozilla/5.0\" \"https://newsapi.eastmoney.com/kuaixun/v1/getlist_102_ajaxResult_10_1_.html\")"
+    ]
+  }
+}
