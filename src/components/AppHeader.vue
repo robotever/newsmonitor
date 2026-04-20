@@ -26,8 +26,8 @@
           font-family:inherit; font-size:11px; padding:2px 10px; cursor:pointer;
           transition: border-color 0.15s, color 0.15s;
         " title="刷新全部"
-          @mouseenter="e => { e.target.style.borderColor='#00c8ff'; e.target.style.color='#00c8ff'; }"
-          @mouseleave="e => { e.target.style.borderColor='#1a3a55'; e.target.style.color='#4a9eda'; }"
+          @mouseenter="e => { (e.target as HTMLElement).style.borderColor='#00c8ff'; (e.target as HTMLElement).style.color='#00c8ff'; }"
+          @mouseleave="e => { (e.target as HTMLElement).style.borderColor='#1a3a55'; (e.target as HTMLElement).style.color='#4a9eda'; }"
         >
           刷新
         </button>
