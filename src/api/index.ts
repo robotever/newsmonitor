@@ -1,7 +1,7 @@
 import type { NewsData } from '@/types'
 import {
   fetchFtchinese, fetchInvesting,
-  fetchBloomberg, fetchMarketwatch, fetchSinaFinance, fetchStcn,
+  fetchBloomberg, fetchMarketwatch, fetchSinaFinance,
   fetchWallstreetcn, fetchJin10, fetchCankaoxiaoxi, fetchMktnews, fetchGelonghui,
   fetchEastmoney,
 } from './fetchers/direct'
@@ -10,7 +10,6 @@ import { limitNewsItems } from './news-policy.mjs'
 
 const FETCHERS: Record<string, () => Promise<any[]>> = {
   sinafinance:  fetchSinaFinance,
-  stcn:         fetchStcn,
   eastmoney:    fetchEastmoney,
   ftchinese:    fetchFtchinese,
   investing:    fetchInvesting,

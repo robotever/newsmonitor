@@ -6,7 +6,6 @@ const ALL_NEWS_SOURCES: NewsSource[] = [
   { id: 'ftchinese', name: 'FT中文网',     type: 'finance', color: '#fff200', icon: 'FT', description: '金融时报中文版',    enabled: true },
   { id: 'investing',  name: 'Investing中文', type: 'finance', color: '#e84141', icon: 'IV', description: 'Investing.com中文财经', enabled: true },
   { id: 'sinafinance', name: '新浪财经股票', type: 'finance', color: '#d71920', icon: '新', description: '新浪财经股票滚动新闻', enabled: true },
-  { id: 'stcn',        name: '证券时报快讯', type: 'finance', color: '#c7000b', icon: '证', description: '人民财讯7×24小时快讯', enabled: true },
   // 国际财经
   { id: 'bloomberg',  name: 'Bloomberg',   type: 'finance', color: '#000000', icon: 'BL', description: '彭博财经新闻',      enabled: true },
   { id: 'marketwatch',name: 'MarketWatch', type: 'finance', color: '#00a651', icon: 'MW', description: 'MarketWatch财经',   enabled: true },

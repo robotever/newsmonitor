@@ -12,9 +12,9 @@ test('inactive sources exclude all retired general-interest feeds', () => {
   }
 })
 
-test('active sources include stock-focused Sina Finance and Securities Times feeds', () => {
+test('active sources include the stock-focused Sina Finance feed and exclude the blocked STCN feed', () => {
   assert.equal(ACTIVE_SOURCE_IDS.has('sinafinance'), true)
-  assert.equal(ACTIVE_SOURCE_IDS.has('stcn'), true)
+  assert.equal(ACTIVE_SOURCE_IDS.has('stcn'), false)
 })
 
 test('every source is limited to ten news items', () => {

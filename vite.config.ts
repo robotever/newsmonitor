@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 
-function proxy(target: string, referer?: string, xhr = false) {
+function proxy(target: string, referer?: string) {
   return {
     target,
     changeOrigin: true as const,
@@ -11,7 +11,6 @@ function proxy(target: string, referer?: string, xhr = false) {
         req.setHeader('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36')
         req.setHeader('Accept', 'application/rss+xml, application/xml, application/json, text/xml, */*')
         if (referer) req.setHeader('Referer', referer)
-        if (xhr) req.setHeader('X-Requested-With', 'XMLHttpRequest')
       })
     },
   }
@@ -30,7 +29,6 @@ export default defineConfig({
       '/proxy-bloomberg': { ...proxy('https://feeds.bloomberg.com'),                          ...rw('/proxy-bloomberg') },
       '/proxy-marketwatch':{ ...proxy('https://feeds.marketwatch.com'),                      ...rw('/proxy-marketwatch') },
       '/proxy-sinafinance':  { ...proxy('https://feed.mix.sina.com.cn', 'https://finance.sina.com.cn'), ...rw('/proxy-sinafinance') },
-      '/proxy-stcn':         { ...proxy('https://www.stcn.com', 'https://www.stcn.com/article/list/kx.html', true), ...rw('/proxy-stcn') },
       '/proxy-eastmoney':    { ...proxy('https://newsapi.eastmoney.com', 'https://finance.eastmoney.com'), ...rw('/proxy-eastmoney') },
       '/proxy-wallstreetcn': { ...proxy('https://api-one.wallstcn.com', 'https://wallstreetcn.com'), ...rw('/proxy-wallstreetcn') },
       '/proxy-jin10':        { ...proxy('https://www.jin10.com', 'https://www.jin10.com'),           ...rw('/proxy-jin10') },
