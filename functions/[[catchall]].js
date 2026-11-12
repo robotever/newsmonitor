@@ -1,10 +1,8 @@
 const PROXY_MAP = {
-  '/proxy-cailian':    { target: 'https://www.cls.cn',               referer: 'https://www.cls.cn' },
   '/proxy-ftchinese':  { target: 'http://www.ftchinese.com' },
   '/proxy-investing':  { target: 'https://cn.investing.com' },
   '/proxy-bloomberg':  { target: 'https://feeds.bloomberg.com' },
   '/proxy-marketwatch':{ target: 'https://feeds.marketwatch.com' },
-  '/proxy-yahoo':      { target: 'https://finance.yahoo.com' },
   '/proxy-producthunt':{ target: 'https://www.producthunt.com' },
   '/proxy-thepaper':   { target: 'https://cache.thepaper.cn' },
   '/proxy-eastmoney':  { target: 'https://newsapi.eastmoney.com',    referer: 'https://finance.eastmoney.com' },

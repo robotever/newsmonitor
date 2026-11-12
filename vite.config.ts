@@ -24,12 +24,10 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/proxy-cailian':   { ...proxy('https://www.cls.cn', 'https://www.cls.cn'),           ...rw('/proxy-cailian') },
       '/proxy-ftchinese': { ...proxy('http://www.ftchinese.com'),                            ...rw('/proxy-ftchinese') },
       '/proxy-investing': { ...proxy('https://cn.investing.com'),                            ...rw('/proxy-investing') },
       '/proxy-bloomberg': { ...proxy('https://feeds.bloomberg.com'),                          ...rw('/proxy-bloomberg') },
       '/proxy-marketwatch':{ ...proxy('https://feeds.marketwatch.com'),                      ...rw('/proxy-marketwatch') },
-      '/proxy-yahoo':     { ...proxy('https://finance.yahoo.com'),                           ...rw('/proxy-yahoo') },
       '/proxy-producthunt':{ ...proxy('https://www.producthunt.com'),                        ...rw('/proxy-producthunt') },
       '/proxy-thepaper':     { ...proxy('https://cache.thepaper.cn'),                                 ...rw('/proxy-thepaper') },
       '/proxy-eastmoney':    { ...proxy('https://newsapi.eastmoney.com', 'https://finance.eastmoney.com'), ...rw('/proxy-eastmoney') },

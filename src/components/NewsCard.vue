@@ -25,7 +25,7 @@
 
     <!-- 加载骨架 -->
     <div v-if="data.loading && !data.items.length" style="padding:6px 8px; display:flex; flex-direction:column; gap:5px;">
-      <div v-for="i in 12" :key="i" class="fv-skeleton" :style="{ width: (50 + (i * 17 % 45)) + '%' }" />
+      <div v-for="i in 10" :key="i" class="fv-skeleton" :style="{ width: (50 + (i * 17 % 45)) + '%' }" />
     </div>
 
     <!-- 错误 -->

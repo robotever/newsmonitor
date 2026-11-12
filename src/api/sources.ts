@@ -1,14 +1,13 @@
 import type { NewsSource } from '@/types'
+import { ACTIVE_SOURCE_IDS } from './news-policy.mjs'
 
-export const NEWS_SOURCES: NewsSource[] = [
+const ALL_NEWS_SOURCES: NewsSource[] = [
   // 中文财经
-  { id: 'cailian',      name: '财联社',     type: 'finance', color: '#c0392b', icon: '财', description: '财联社实时电报快讯', enabled: true },
   { id: 'ftchinese', name: 'FT中文网',     type: 'finance', color: '#fff200', icon: 'FT', description: '金融时报中文版',    enabled: true },
   { id: 'investing',  name: 'Investing中文', type: 'finance', color: '#e84141', icon: 'IV', description: 'Investing.com中文财经', enabled: true },
   // 国际财经
   { id: 'bloomberg',  name: 'Bloomberg',   type: 'finance', color: '#000000', icon: 'BL', description: '彭博财经新闻',      enabled: true },
   { id: 'marketwatch',name: 'MarketWatch', type: 'finance', color: '#00a651', icon: 'MW', description: 'MarketWatch财经',   enabled: true },
-  { id: 'yahoo',      name: 'Yahoo Finance',type: 'finance', color: '#6001d2', icon: 'YF', description: 'Yahoo财经新闻',    enabled: true },
   // 科技
   { id: 'hackernews', name: 'Hacker News', type: 'tech',    color: '#ff6600', icon: 'HN', description: 'YC旗下科技社区',   enabled: true },
   { id: 'github',     name: 'GitHub趋势',  type: 'tech',    color: '#24292f', icon: 'GH', description: 'GitHub每日热门项目', enabled: true },
@@ -25,3 +24,5 @@ export const NEWS_SOURCES: NewsSource[] = [
   // 综合
   { id: 'reddit',     name: 'Reddit',      type: 'global',  color: '#ff4500', icon: 'Rd', description: 'Reddit热门帖子',    enabled: true },
 ]
+
+export const NEWS_SOURCES = ALL_NEWS_SOURCES.filter(source => ACTIVE_SOURCE_IDS.has(source.id))
