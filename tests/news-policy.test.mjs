@@ -6,9 +6,15 @@ import {
   limitNewsItems,
 } from '../src/api/news-policy.mjs'
 
-test('inactive sources exclude Cailian and Yahoo Finance', () => {
-  assert.equal(ACTIVE_SOURCE_IDS.has('cailian'), false)
-  assert.equal(ACTIVE_SOURCE_IDS.has('yahoo'), false)
+test('inactive sources exclude all retired general-interest feeds', () => {
+  for (const sourceId of ['cailian', 'yahoo', 'hackernews', 'github', 'producthunt', 'thepaper', '_36kr', 'reddit']) {
+    assert.equal(ACTIVE_SOURCE_IDS.has(sourceId), false, sourceId)
+  }
+})
+
+test('active sources include stock-focused Sina Finance and Securities Times feeds', () => {
+  assert.equal(ACTIVE_SOURCE_IDS.has('sinafinance'), true)
+  assert.equal(ACTIVE_SOURCE_IDS.has('stcn'), true)
 })
 
 test('every source is limited to ten news items', () => {

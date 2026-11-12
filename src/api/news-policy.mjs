@@ -2,9 +2,8 @@ export const NEWS_ITEM_LIMIT = 10
 
 export const ACTIVE_SOURCE_IDS = new Set([
   'ftchinese', 'investing', 'bloomberg', 'marketwatch',
-  'hackernews', 'github', 'producthunt', 'thepaper', 'eastmoney',
-  'wallstreetcn', 'jin10', 'cankaoxiaoxi', 'mktnews', '_36kr',
-  'gelonghui', 'reddit',
+  'sinafinance', 'stcn', 'eastmoney', 'wallstreetcn', 'jin10',
+  'cankaoxiaoxi', 'mktnews', 'gelonghui',
 ])
 
 export function limitNewsItems(items) {

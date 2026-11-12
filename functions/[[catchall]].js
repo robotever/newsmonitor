@@ -3,14 +3,13 @@ const PROXY_MAP = {
   '/proxy-investing':  { target: 'https://cn.investing.com' },
   '/proxy-bloomberg':  { target: 'https://feeds.bloomberg.com' },
   '/proxy-marketwatch':{ target: 'https://feeds.marketwatch.com' },
-  '/proxy-producthunt':{ target: 'https://www.producthunt.com' },
-  '/proxy-thepaper':   { target: 'https://cache.thepaper.cn' },
+  '/proxy-sinafinance':{ target: 'https://feed.mix.sina.com.cn', referer: 'https://finance.sina.com.cn' },
+  '/proxy-stcn':       { target: 'https://www.stcn.com', referer: 'https://www.stcn.com/article/list/kx.html', xhr: true },
   '/proxy-eastmoney':  { target: 'https://newsapi.eastmoney.com',    referer: 'https://finance.eastmoney.com' },
   '/proxy-wallstreetcn':{ target: 'https://api-one.wallstcn.com',   referer: 'https://wallstreetcn.com' },
   '/proxy-jin10':      { target: 'https://www.jin10.com',            referer: 'https://www.jin10.com' },
   '/proxy-cankaoxiaoxi':{ target: 'https://china.cankaoxiaoxi.com' },
   '/proxy-mktnews':    { target: 'https://api.mktnews.net',          referer: 'https://mktnews.net' },
-  '/proxy-36kr':       { target: 'https://www.36kr.com',             referer: 'https://www.36kr.com' },
   '/proxy-gelonghui':  { target: 'https://www.gelonghui.com',        referer: 'https://www.gelonghui.com' },
   '/proxy-fred':       { target: 'https://fred.stlouisfed.org',       referer: 'https://fred.stlouisfed.org' },
 }
@@ -30,6 +29,7 @@ export async function onRequest(context) {
       headers.set('User-Agent', UA)
       headers.set('Accept', 'application/rss+xml, application/xml, application/json, text/html, */*')
       if (config.referer) headers.set('Referer', config.referer)
+      if (config.xhr) headers.set('X-Requested-With', 'XMLHttpRequest')
 
       try {
         const response = await fetch(targetUrl, { headers })

@@ -1,31 +1,26 @@
 import type { NewsData } from '@/types'
 import {
-  fetchHackerNews, fetchReddit, fetchGithub,
   fetchFtchinese, fetchInvesting,
-  fetchBloomberg, fetchMarketwatch, fetchProducthunt,
-  fetchWallstreetcn, fetchJin10, fetchCankaoxiaoxi, fetchMktnews, fetchGelonghui, fetch36kr,
-  fetchThepaper, fetchEastmoney,
+  fetchBloomberg, fetchMarketwatch, fetchSinaFinance, fetchStcn,
+  fetchWallstreetcn, fetchJin10, fetchCankaoxiaoxi, fetchMktnews, fetchGelonghui,
+  fetchEastmoney,
 } from './fetchers/direct'
 import { getMockItems } from './mock'
 import { limitNewsItems } from './news-policy.mjs'
 
 const FETCHERS: Record<string, () => Promise<any[]>> = {
-  hackernews:   fetchHackerNews,
-  reddit:       fetchReddit,
-  github:       fetchGithub,
-  thepaper:     fetchThepaper,
+  sinafinance:  fetchSinaFinance,
+  stcn:         fetchStcn,
   eastmoney:    fetchEastmoney,
   ftchinese:    fetchFtchinese,
   investing:    fetchInvesting,
   bloomberg:    fetchBloomberg,
   marketwatch:  fetchMarketwatch,
-  producthunt:  fetchProducthunt,
   wallstreetcn: fetchWallstreetcn,
   jin10:        fetchJin10,
   cankaoxiaoxi: fetchCankaoxiaoxi,
   mktnews:      fetchMktnews,
   gelonghui:    fetchGelonghui,
-  _36kr:        fetch36kr,
 }
 
 const DEMO_SOURCES = new Set<string>([])

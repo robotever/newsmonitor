@@ -160,6 +160,41 @@ export const fetchProducthunt= () => fetchFeed('/proxy-producthunt/feed')
 
 // ── 新增财经源 ────────────────────────────────────────────
 
+// 新浪财经 — 股票滚动新闻
+export async function fetchSinaFinance(): Promise<NewsItem[]> {
+  const res = await fetch('/proxy-sinafinance/api/roll/get?pageid=153&lid=2516&num=20&page=1')
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const json = await res.json()
+  return (json.result?.data ?? []).map((item: any) => ({
+    id: String(item.oid),
+    title: item.title,
+    url: item.url,
+    extra: {
+      info: item.ctime
+        ? new Date(Number(item.ctime) * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+        : undefined,
+      hover: item.intro?.trim(),
+    },
+  })).filter((item: NewsItem) => item.title && item.url)
+}
+
+// 证券时报·人民财讯 — 7×24小时快讯
+export async function fetchStcn(): Promise<NewsItem[]> {
+  const res = await fetch('/proxy-stcn/article/list.html?type=kx&page=1')
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const json = await res.json()
+  return (json.data ?? []).map((item: any) => ({
+    id: String(item.id),
+    title: item.title,
+    url: item.share_url || `https://www.stcn.com${item.url}`,
+    extra: {
+      info: item.time
+        ? new Date(Number(item.time)).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+        : undefined,
+    },
+  })).filter((item: NewsItem) => item.title)
+}
+
 // 华尔街见闻 — 实时快讯
 export async function fetchWallstreetcn(): Promise<NewsItem[]> {
   const res = await fetch('/proxy-wallstreetcn/apiv1/content/lives?channel=global-channel&limit=30')
