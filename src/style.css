@@ -25,6 +25,57 @@
 }
 
 @layer components {
+  .home-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr);
+    gap: 6px;
+    padding: 8px;
+    align-items: start;
+  }
+  .home-content { min-width: 0; display: grid; gap: 6px; }
+  .home-ticker { position: sticky; top: 8px; height: calc(100vh - 70px); overflow: hidden; }
+  .news-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .news-grid__item { min-width: 0; }
+  .news-grid__footer { grid-column: 1 / -1; text-align: center; font-size: 10px; color: #555; padding: 4px 0; }
+
+  .debt-dashboard { overflow: hidden; }
+  .debt-dashboard__header { padding: 6px 8px; }
+  .debt-dashboard__icon { display: inline-grid; place-items: center; width: 18px; height: 18px; background: #725b18; color: #ffe58a; font-size: 10px; }
+  .debt-dashboard__status { padding: 1px 6px; border: 1px solid; font-size: 9px; letter-spacing: .08em; }
+  .debt-dashboard__status.is-stable { color: #43d19e; border-color: #1b6f58; }
+  .debt-dashboard__status.is-insufficient { color: #8ba8ba; border-color: #315b79; }
+  .debt-dashboard__status.is-warning { color: #f6c85f; border-color: #725b18; }
+  .debt-dashboard__status.is-alert { color: #ff6b6b; border-color: #7d2727; }
+  .debt-dashboard__subtitle { margin: 3px 0 0 23px; color: #315b79; font-size: 9px; }
+  .debt-dashboard__actions { display: flex; align-items: center; gap: 8px; color: #315b79; font-size: 9px; }
+  .debt-dashboard__actions button, .debt-dashboard__error button { background: #0a1e30; border: 1px solid #1a3a55; color: #4a9eda; padding: 2px 8px; cursor: pointer; font-size: 10px; }
+  .debt-dashboard__loading { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 12px; }
+  .debt-dashboard__loading .fv-skeleton { height: 130px; }
+  .debt-dashboard__themes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .debt-theme { min-width: 0; padding: 7px; border-right: 1px solid #102334; background: linear-gradient(180deg, #06111b, #04090f); }
+  .debt-theme:last-child { border-right: none; }
+  .debt-theme__heading { display: flex; align-items: center; gap: 5px; margin-bottom: 5px; color: #7ed5ff; font-size: 10px; font-weight: 700; }
+  .debt-theme__heading span { color: #00c8ff; font-family: monospace; font-size: 9px; }
+  .debt-theme p { margin-top: 6px; color: #3f6b86; font-size: 9px; line-height: 1.45; }
+  .debt-metric { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px; align-items: baseline; min-height: 22px; padding: 3px 0; border-bottom: 1px solid #0c1b27; }
+  .debt-metric__label { color: #6d9ab4; font-size: 10px; }
+  .debt-metric__frequency { color: #294d65; font-size: 8px; }
+  .debt-metric__frequency.is-stale { color: #f6c85f; }
+  .debt-metric strong { color: #bfeaff; font-family: monospace; font-size: 12px; }
+  .debt-metric.is-emphasized strong { color: #00e0ff; }
+  .debt-metric__change, .debt-metric time { grid-column: span 1; color: #294d65; font-size: 8px; }
+  .debt-metric__change.is-up { color: #ff7373; }
+  .debt-metric__change.is-down { color: #43d19e; }
+  .debt-metric time { grid-column: 3; text-align: right; }
+  .debt-theme__signal { margin-top: 6px; padding: 4px 5px; border-left: 2px solid; font-size: 9px; }
+  .debt-theme__signal.is-stable { color: #43d19e; border-color: #43d19e; background: #062017; }
+  .debt-theme__signal.is-warning { color: #f6c85f; border-color: #f6c85f; background: #201a08; }
+  .debt-theme__signal.is-alert { color: #ff6b6b; border-color: #ff6b6b; background: #250b0b; }
+  .debt-theme__signal.is-neutral { color: #6d9ab4; border-color: #315b79; background: #071521; }
+  .debt-dashboard__footer { display: flex; justify-content: space-between; gap: 12px; padding: 4px 8px; border-top: 1px solid #102334; color: #294d65; font-size: 8px; }
+  .debt-dashboard__partial { color: #f6c85f; }
+  .debt-dashboard__error { display: flex; align-items: center; gap: 10px; padding: 14px; color: #b66; }
+
   /* ── 卡片 ── */
   .fv-card {
     border: 1px solid #162635;
@@ -124,4 +175,20 @@
     0%   { background-position: 200% 0; }
     100% { background-position: -200% 0; }
   }
+}
+
+@media (max-width: 1100px) {
+  .home-layout { grid-template-columns: 1fr; }
+  .home-ticker { position: static; height: 420px; }
+  .debt-dashboard__themes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .debt-dashboard__loading { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .debt-theme:nth-child(2) { border-right: none; }
+}
+
+@media (max-width: 720px) {
+  .home-layout { padding: 6px; }
+  .news-grid, .debt-dashboard__themes, .debt-dashboard__loading { grid-template-columns: 1fr; }
+  .debt-theme { border-right: none; border-bottom: 1px solid #102334; }
+  .debt-dashboard__footer { flex-direction: column; gap: 2px; }
+  .home-ticker { height: 360px; }
 }

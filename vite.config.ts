@@ -39,6 +39,7 @@ export default defineConfig({
       '/proxy-mktnews':      { ...proxy('https://api.mktnews.net', 'https://mktnews.net'),           ...rw('/proxy-mktnews') },
       '/proxy-36kr':         { ...proxy('https://www.36kr.com', 'https://www.36kr.com'),             ...rw('/proxy-36kr') },
       '/proxy-gelonghui':    { ...proxy('https://www.gelonghui.com', 'https://www.gelonghui.com'),   ...rw('/proxy-gelonghui') },
+      '/proxy-fred':         { ...proxy('https://fred.stlouisfed.org', 'https://fred.stlouisfed.org'), ...rw('/proxy-fred') },
     },
   },
 })

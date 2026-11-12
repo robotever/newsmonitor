@@ -14,6 +14,7 @@ const PROXY_MAP = {
   '/proxy-mktnews':    { target: 'https://api.mktnews.net',          referer: 'https://mktnews.net' },
   '/proxy-36kr':       { target: 'https://www.36kr.com',             referer: 'https://www.36kr.com' },
   '/proxy-gelonghui':  { target: 'https://www.gelonghui.com',        referer: 'https://www.gelonghui.com' },
+  '/proxy-fred':       { target: 'https://fred.stlouisfed.org',       referer: 'https://fred.stlouisfed.org' },
 }
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
