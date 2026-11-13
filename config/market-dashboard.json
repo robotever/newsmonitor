@@ -101,7 +101,44 @@
         "priceVolumeFlowDivergence": 15,
         "marketRiskTransmission": 10
       }
+    },
+    "concept": {
+      "strength": {
+        "relativeReturn1d": 20,
+        "relativeReturn5d": 20,
+        "relativeReturn20d": 15,
+        "advancingShare": 30,
+        "mainFlowDirection": 15
+      },
+      "heat": {
+        "turnoverCrossSection": 30,
+        "amountCrossSection": 25,
+        "marketAmountShare": 15,
+        "mainFlowConcentration": 20,
+        "momentumAcceleration": 10
+      },
+      "risk": {
+        "decliningShare": 25,
+        "mainOutflow": 25,
+        "mediumTrendDeterioration": 20,
+        "priceVolumeFlowDivergence": 20,
+        "marketRiskTransmission": 10
+      }
     }
+  },
+  "conceptSelection": {
+    "version": "concept-selection-v0.1",
+    "scoringVersion": "concept-score-v0.1",
+    "weights": {
+      "momentum": 35,
+      "flow": 30,
+      "breadth": 20,
+      "activity": 15
+    },
+    "minimumHoldTradingDays": 2,
+    "exitBufferRank": 15,
+    "dynamicSlots": 10,
+    "minimumCompleteness": 70
   },
   "completeness": {
     "evidenceThreshold": 70,

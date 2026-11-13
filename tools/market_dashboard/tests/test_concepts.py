@@ -2,6 +2,7 @@ import copy
 import json
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 
 try:
@@ -16,6 +17,20 @@ except ModuleNotFoundError:
     concept_definitions = None
     core_concept_ids = None
     load_concept_config = None
+
+from tools.market_dashboard.scoring import load_config
+from tools.market_dashboard.sources import SourceBatch
+
+try:
+    from tools.market_dashboard.concepts import build_concept_payload, select_dynamic_concepts
+except ImportError:
+    build_concept_payload = None
+    select_dynamic_concepts = None
+
+try:
+    from tools.market_dashboard.job import derive_concept_candidates
+except ImportError:
+    derive_concept_candidates = None
 
 
 class ConceptConfigTests(unittest.TestCase):
@@ -107,6 +122,137 @@ class ConceptConfigTests(unittest.TestCase):
         path = Path(directory.name) / 'concepts.json'
         path.write_text(json.dumps(value, ensure_ascii=False))
         return path
+
+
+class ConceptDerivationTests(unittest.TestCase):
+    @staticmethod
+    def batch(count=20, missing=None, source='Wind'):
+        rows = []
+        for index in range(count):
+            row = {
+                'id': f'884{2000 + index}.WI', 'name': f'概念{index}', 'source': source,
+                '_timestamp': '2026-11-13T15:00:02+08:00',
+                '_units': {'成交额': '元', '当日主力净流入额': '元', '近5日主力净流入额': '元',
+                           '近20日主力净流入额': '元', '上涨家数': '个', '下跌家数': '个', '平盘家数': '个'},
+                '涨跌幅': index - 10, '5日涨跌幅': index - 8, '20日涨跌幅': index - 5,
+                '成交额': 1_000_000_000 + index * 10_000_000, '换手率': 1 + index / 10,
+                '当日主力净流入额': (index - 10) * 1_000_000,
+                '近5日主力净流入额': (index - 8) * 5_000_000,
+                '近20日主力净流入额': (index - 5) * 20_000_000,
+                '上涨家数': 10 + index, '下跌家数': 30 - index, '平盘家数': 2,
+            }
+            if missing is not None and index == 0:
+                row[missing] = '.'
+            rows.append(row)
+        return SourceBatch('Wind', rows, 'wind', [], True)
+
+    def test_derivation_uses_full_wind_universe_without_mx_or_natural_language_fields(self):
+        self.assertIsNotNone(derive_concept_candidates, 'concept derivation is missing')
+        candidates = derive_concept_candidates(
+            self.batch(), 200_000_000_000, 60,
+            datetime.fromisoformat('2026-11-13T15:05:00+08:00'), load_config())
+
+        self.assertEqual(len(candidates), 20)
+        for candidate in candidates:
+            self.assertEqual(candidate['frequency'], 'intraday')
+            self.assertNotIn('technicalIndicators', candidate)
+            self.assertNotIn('fundamentals', candidate)
+            for component in candidate['indicators'].values():
+                self.assertNotEqual(component.get('source'), 'MX')
+            for key in ('relativeReturn1d', 'relativeReturn5d', 'relativeReturn20d',
+                        'turnoverCrossSection', 'amountCrossSection', 'mainFlowDirection'):
+                self.assertEqual(len(candidate['indicators'][key]['history']), 20)
+
+    def test_derivation_keeps_missing_inputs_unavailable_instead_of_zero(self):
+        self.assertIsNotNone(derive_concept_candidates, 'concept derivation is missing')
+        candidates = derive_concept_candidates(
+            self.batch(missing='5日涨跌幅'), 200_000_000_000, 60,
+            datetime.fromisoformat('2026-11-13T15:05:00+08:00'), load_config())
+        component = candidates[0]['indicators']['relativeReturn5d']
+        self.assertIsNone(component['value'])
+        self.assertFalse(component['available'])
+        self.assertNotEqual(component['value'], 0)
+
+
+class ConceptSelectionTests(unittest.TestCase):
+    def setUp(self):
+        self.assertIsNotNone(select_dynamic_concepts, 'concept selector is missing')
+        self.config = load_config()
+
+    @staticmethod
+    def candidate(index, *, score=None, complete=100, core=False):
+        value = 90 - index if score is None else score
+        return {
+            'id': f'884{3000 + index}.WI', 'name': f'候选{index}', 'core': core,
+            'strength': 60, 'heat': 50, 'risk': 40, 'completeness': complete,
+            'missing': [], 'contributors': [], 'sourceTimestamps': [],
+            'selectionComponents': {'momentum': value, 'flow': value, 'breadth': value, 'activity': value},
+            'selectionCompleteness': complete, 'relativeReturn5dRaw': value,
+        }
+
+    def test_first_day_excludes_core_returns_ten_unique_and_breaks_ties_by_code(self):
+        candidates = [self.candidate(i, score=50, core=i < 2) for i in range(14)]
+        result = select_dynamic_concepts(candidates, [], '2026-11-13', self.config)
+        self.assertEqual(len(result), 10)
+        self.assertEqual(len({item['id'] for item in result}), 10)
+        self.assertTrue(all(not item['core'] for item in result))
+        self.assertEqual([item['id'] for item in result], sorted(item['id'] for item in result))
+        self.assertTrue(all(item['selectedOn'] == '2026-11-13' and item['retainedTradingDays'] == 1
+                            for item in result))
+
+    def test_same_day_reuses_identity_and_two_day_hold_exits_invalid_immediately(self):
+        candidates = [self.candidate(i) for i in range(20)]
+        first = select_dynamic_concepts(candidates, [], '2026-11-13', self.config)
+        reordered = list(reversed(candidates))
+        same_day = select_dynamic_concepts(reordered, first, '2026-11-13', self.config)
+        self.assertEqual([item['id'] for item in same_day], [item['id'] for item in first])
+        self.assertEqual([item['retainedTradingDays'] for item in same_day], [1] * 10)
+
+        next_day_candidates = [dict(item) for item in candidates]
+        for item in next_day_candidates[:10]:
+            item['selectionComponents'] = {key: 0 for key in item['selectionComponents']}
+        next_day_candidates[0]['selectionCompleteness'] = 0
+        second = select_dynamic_concepts(next_day_candidates, first, '2026-11-14', self.config)
+        self.assertNotIn(first[0]['id'], [item['id'] for item in second])
+        self.assertTrue(set(item['id'] for item in first[1:]) <= set(item['id'] for item in second))
+
+    def test_after_hold_only_rank_fifteen_buffer_is_retained(self):
+        candidates = [self.candidate(i) for i in range(25)]
+        previous = []
+        for rank in (14, 15):
+            item = self.candidate(rank)
+            item.update(selectedOn='2026-11-10', retainedTradingDays=2, selectionScore=100 - rank)
+            previous.append(item)
+        result = select_dynamic_concepts(candidates, previous, '2026-11-13', self.config)
+        ids = {item['id'] for item in result}
+        self.assertIn(self.candidate(14)['id'], ids)
+        self.assertNotIn(self.candidate(15)['id'], ids)
+
+    def test_fewer_than_ten_eligible_candidates_fails_explicitly(self):
+        candidates = [self.candidate(i, complete=100 if i < 9 else 0) for i in range(12)]
+        with self.assertRaises(ValueError):
+            select_dynamic_concepts(candidates, [], '2026-11-13', self.config)
+
+    def test_payload_scores_core_and_emits_selection_metadata_only_for_dynamic(self):
+        self.assertIsNotNone(build_concept_payload, 'concept payload builder is missing')
+        config = self.config
+        keys = {key for weights in config.get('families', {}).get('concept', {}).values() for key in weights}
+        candidates = []
+        for index in range(40):
+            candidate = self.candidate(index, core=index < 25)
+            candidate['coreOrder'] = index if index < 25 else None
+            candidate['indicators'] = {key: {'value': 60, 'source': 'Wind',
+                'timestamp': '2026-11-13T15:00:02+08:00'} for key in keys}
+            candidates.append(candidate)
+        payload = build_concept_payload(candidates, [], '2026-11-13',
+                                        '2026-11-13T15:05:00+08:00', config)
+        self.assertEqual(payload['selectionVersion'], 'concept-selection-v0.1')
+        self.assertEqual(payload['scoringVersion'], 'concept-score-v0.1')
+        self.assertEqual(len(payload['core']), 25)
+        self.assertEqual(len(payload['dynamic']), 10)
+        self.assertTrue(all('selectionScore' not in item for item in payload['core']))
+        self.assertTrue(all({'selectionScore', 'selectedOn', 'retainedTradingDays'} <= item.keys()
+                            for item in payload['dynamic']))
 
 
 if __name__ == '__main__':

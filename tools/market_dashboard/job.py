@@ -17,7 +17,7 @@ import re
 import time
 
 from . import sources
-from .scoring import load_config, build_dashboard_payload, score_family
+from .scoring import load_config, build_dashboard_payload, percentile_rank, score_family
 from .sources import STYLE_DEFINITIONS, INDUSTRY_DEFINITIONS
 
 
@@ -323,6 +323,104 @@ def _breadth(row):
     if any(v is None or v < 0 for v in values) or sum(values) <= 0:
         return None, None
     return values[0] / sum(values) * 100, values[1] / sum(values) * 100
+
+
+def derive_concept_candidates(batch, market_amount, market_risk, now, config):
+    """Convert the full Wind concept batch into comparable derived candidates.
+
+    All ranks are calculated against the same fresh candidate universe.  Raw
+    provider fields are never exposed, and missing observations remain missing
+    rather than being coerced to neutral values.
+    """
+    rows = batch.rows
+    by_id = {row.get('id'): row for row in rows if isinstance(row.get('id'), str)}
+
+    def metrics(row):
+        amount = _money(row, '成交额')
+        flow = _money(row, '当日主力净流入额')
+        advancing, declining = _breadth(row)
+        return {
+            'relativeReturn1d': _value(row, '涨跌幅'),
+            'relativeReturn5d': _value(row, '5日涨跌幅'),
+            'relativeReturn20d': _value(row, '20日涨跌幅'),
+            'turnoverCrossSection': _value(row, '换手率'),
+            'amountCrossSection': amount,
+            'marketAmountShare': _ratio(amount, market_amount),
+            'mainFlowDirection': _ratio(flow, amount),
+            'advancingShare': advancing,
+            'decliningShare': declining,
+        }
+
+    values = {row['id']: metrics(row) for row in rows if row.get('id') in by_id}
+    ranked_keys = ('relativeReturn1d', 'relativeReturn5d', 'relativeReturn20d',
+                   'turnoverCrossSection', 'amountCrossSection', 'marketAmountShare',
+                   'mainFlowDirection')
+    histories = {
+        key: [metric[key] for object_id, metric in values.items()
+              if _fresh(by_id[object_id], now) and metric[key] is not None]
+        for key in ranked_keys
+    }
+    acceleration_values = {
+        object_id: (metric['relativeReturn1d'] - metric['relativeReturn5d'] / 5
+                    if metric['relativeReturn1d'] is not None
+                    and metric['relativeReturn5d'] is not None else None)
+        for object_id, metric in values.items()
+    }
+    acceleration_history = [value for object_id, value in acceleration_values.items()
+                            if _fresh(by_id[object_id], now) and value is not None]
+
+    candidates = []
+    for row in rows:
+        object_id = row.get('id')
+        if object_id not in values:
+            continue
+        metric = values[object_id]
+        indicators = {key: _cross(row, metric[key], histories[key], now) for key in ranked_keys}
+        indicators['advancingShare'] = _component(row, metric['advancingShare'], now)
+        indicators['decliningShare'] = _component(row, metric['decliningShare'], now)
+
+        flow = metric['mainFlowDirection']
+        indicators['mainOutflow'] = _cross(row, flow, histories['mainFlowDirection'], now)
+        indicators['mainOutflow']['reverse'] = True
+        indicators['mainFlowConcentration'] = _cross(
+            row, abs(flow) if flow is not None else None,
+            [abs(value) for value in histories['mainFlowDirection']], now)
+        indicators['mediumTrendDeterioration'] = _cross(
+            row, metric['relativeReturn20d'], histories['relativeReturn20d'], now)
+        indicators['mediumTrendDeterioration']['reverse'] = True
+        indicators['momentumAcceleration'] = _cross(
+            row, acceleration_values[object_id], acceleration_history, now)
+
+        return_rank = percentile_rank(histories['relativeReturn1d'], metric['relativeReturn1d'], config)
+        flow_rank = percentile_rank(histories['mainFlowDirection'], flow, config)
+        divergence = (abs(return_rank - flow_rank)
+                      if return_rank is not None and flow_rank is not None else None)
+        indicators['priceVolumeFlowDivergence'] = _component(row, divergence, now)
+        if market_risk is not None:
+            indicators['marketRiskTransmission'] = {
+                'value': market_risk, 'available': _fresh(row, now),
+                'stale': not _fresh(row, now), 'source': 'Derived',
+                'timestamp': now.isoformat(),
+            }
+
+        component_inputs = {
+            'momentum': percentile_rank(histories['relativeReturn5d'], metric['relativeReturn5d'], config),
+            'flow': flow_rank,
+            'breadth': metric['advancingShare'],
+            'activity': percentile_rank(histories['turnoverCrossSection'], metric['turnoverCrossSection'], config),
+        }
+        weights = config['conceptSelection']['weights']
+        observed_weight = sum(weights[key] for key, value in component_inputs.items()
+                              if value is not None)
+        selection_completeness = observed_weight / sum(weights.values()) * 100
+        candidates.append({
+            'id': object_id, 'name': row.get('name', object_id),
+            'frequency': 'intraday', 'indicators': indicators,
+            'selectionComponents': component_inputs,
+            'selectionCompleteness': selection_completeness,
+            'relativeReturn5dRaw': metric['relativeReturn5d'],
+        })
+    return candidates
 
 
 def _global_components(rows, now, config):
