@@ -70,17 +70,26 @@ const industryIds = [
   '882123.WI', '882124.WI', '882125.WI', '882126.WI', '882127.WI', '882128.WI', '882129.WI',
   '882130.WI', '882131.WI', '882132.WI', '882133.WI', '882134.WI', '882135.WI', '882136.WI',
 ]
+const conceptIds = Array.from({ length: 35 }, (_, index) => `884${2000 + index}.WI`)
 function payload() {
   const object = id => ({ id, name: id, strength: 60, heat: null, risk: 40,
     completeness: 60, missing: ['heat'], contributors: [{ label: 'Derived evidence', impact: 10 }],
     sourceTimestamps: [{ source: 'Wind', timestamp: OBSERVED }], change1d: null, change5d: null })
   return {
-    schemaVersion: 'market-dashboard-v1', scoringVersion: 'market-score-v0.1',
+    schemaVersion: 'market-dashboard-v2', scoringVersion: 'market-score-v0.1',
     observedAt: OBSERVED, marketDate: '2026-11-12', session: 'intraday',
     global: object('global'), aShare: { ...object('a-share'), stage: '震荡' },
     styles: styleIds.map(object), industries: industryIds.map(object),
+    concepts: {
+      selectionVersion: 'concept-selection-v0.1', scoringVersion: 'concept-score-v0.1',
+      selectedAt: OBSERVED,
+      core: conceptIds.slice(0, 25).map(object),
+      dynamic: conceptIds.slice(25).map((id, index) => ({ ...object(id),
+        selectionScore: 70 - index, selectedOn: '2026-11-12', retainedTradingDays: 1 })),
+    },
     dataStatus: { completeness: 60, stale: false, missing: [] },
-    sourceMode: { breadth: 'wind', styles: 'wind', industries: 'wind', global: { DGS10: 'fred', gold: 'mx' } },
+    sourceMode: { breadth: 'wind', styles: 'wind', industries: 'wind', concepts: 'wind',
+      conceptDiscovery: 'mx', global: { DGS10: 'fred', gold: 'mx' } },
   }
 }
 async function handler(name) {
@@ -129,16 +138,27 @@ test('publish handles invalid JSON and enforces the actual UTF-8 stream limit ev
   await errorResponse(await publish(context(publishRequest(exactLimit + ' '), null)), 413, 'PAYLOAD_TOO_LARGE')
 })
 
-test('publish validates exact schema, 43 identities, evidence, missingness and derived field allowlists', async () => {
+test('publish validates exact v2 schema, 78 identities, concept governance and derived field allowlists', async () => {
   const publish = await handler('publish')
   const invalid = [
-    p => { p.schemaVersion = 'market-dashboard-v2' }, p => { p.scoringVersion = 'unknown' },
+    p => { p.schemaVersion = 'market-dashboard-v1' }, p => { p.scoringVersion = 'unknown' },
     p => { p.aShare.strength = 101 }, p => { p.aShare.risk = -1 }, p => { p.aShare.heat = 1.5 },
     p => { p.global.strength = true }, p => { p.aShare.completeness = 101 },
     p => { p.global.completeness = 0 }, p => { p.global.sourceTimestamps = [] },
     p => { p.global.strength = p.global.heat = p.global.risk = null },
     p => { p.aShare.completeness = 49; p.aShare.stage = '扩张' },
     p => { p.styles.pop() }, p => { p.industries[1].id = p.industries[0].id },
+    p => { p.concepts.core.pop() }, p => { p.concepts.core.push({ ...p.concepts.core[0] }) },
+    p => { p.concepts.dynamic.pop() }, p => { p.concepts.dynamic.push({ ...p.concepts.dynamic[0] }) },
+    p => { p.concepts.dynamic[0].id = p.concepts.core[0].id },
+    p => { p.concepts.core[0].selectionScore = 60 },
+    p => { p.aShare.selectionScore = 60 },
+    p => { p.concepts.dynamic[0].selectionScore = 101 },
+    p => { p.concepts.dynamic[0].selectedOn = '2026-02-30' },
+    p => { p.concepts.dynamic[0].retainedTradingDays = 0 },
+    p => { p.concepts.selectionVersion = 'unknown' },
+    p => { p.concepts.scoringVersion = 'unknown' },
+    p => { p.concepts.selectedAt = 'invalid' },
     p => { p.industries[0].id = 'fake.WI' }, p => { p.global.id = 'fake' },
     p => { p.aShare.missing = null }, p => { p.aShare.frequency = 'realtime' },
     p => { p.global.sourceTimestamps[0].source = 'provider-secret-detail' },
@@ -147,6 +167,7 @@ test('publish validates exact schema, 43 identities, evidence, missingness and d
     p => { p.aShare.comparisonUnavailable = { change1d: 'unsafe-detail' } },
     p => { p.aShare.stage = 'made-up' }, p => { p.dataStatus.completeness = 61 },
     p => { p.dataStatus.stale = 1 }, p => { p.sourceMode.breadth = 'mx' },
+    p => { p.sourceMode.concepts = 'mx' }, p => { p.sourceMode.conceptDiscovery = 'wind' },
     p => { p.sourceMode.global.DGS10 = 'unknown' }, p => { p.sourceMode.global['raw.rows'] = 'fred' },
     p => { p.sourceMode.global.DGS10 = { token: 'unsafe' } },
     ...['rows', '_units', 'history', 'raw', 'indicators', 'authorization'].flatMap(key => [
@@ -170,7 +191,8 @@ test('publish accepts nullable axes and low positive evidence, stores only proce
   const publish = await handler('publish')
   const db = database(t)
   const candidate = payload()
-  for (const object of [candidate.global, candidate.aShare, ...candidate.styles, ...candidate.industries]) {
+  for (const object of [candidate.global, candidate.aShare, ...candidate.styles, ...candidate.industries,
+    ...candidate.concepts.core, ...candidate.concepts.dynamic]) {
     object.completeness = 1
     object.stage = null
   }
@@ -243,7 +265,7 @@ print(json.dumps(result.payload))
 `], { cwd: new URL('..', import.meta.url), encoding: 'utf8' }))
   const response = await publish(context(publishRequest(candidate), db))
   assert.equal(response.status, 201)
-  assert.equal(db.execute('SELECT completeness FROM market_dashboard_snapshots').results[0].completeness, 54)
+  assert.equal(db.execute('SELECT completeness FROM market_dashboard_snapshots').results[0].completeness, 74)
 })
 
 function readContext(name, db, search = '') {
@@ -315,13 +337,17 @@ test('history includes its exact UTC lower boundary and sorts compact observatio
   ])
   assert.deepEqual(result.snapshots.map(item => item.aShare.strength), [20, 50, 80])
   const last = result.snapshots[2]
-  assert.deepEqual(Object.keys(last).sort(), ['aShare', 'global', 'industries', 'marketDate', 'observedAt', 'scoringVersion', 'session', 'styles'])
+  assert.deepEqual(Object.keys(last).sort(), ['aShare', 'concepts', 'global', 'industries', 'marketDate', 'observedAt', 'scoringVersion', 'session', 'styles'])
   assert.equal(last.marketDate, '2026-11-12')
   assert.equal(last.scoringVersion, 'market-score-v0.1')
   assert.equal(last.session, 'intraday')
   assert.deepEqual(last.aShare, { id: 'a-share', strength: 80, heat: null, risk: 40, completeness: 60 })
   assert.equal(last.styles.length, 6)
   assert.equal(last.industries.length, 35)
+  assert.deepEqual(Object.keys(last.concepts).sort(), ['core', 'dynamic', 'scoringVersion', 'selectedAt', 'selectionVersion'])
+  assert.equal(last.concepts.core.length, 25)
+  assert.equal(last.concepts.dynamic.length, 10)
+  assert.ok(!Object.hasOwn(last.concepts.dynamic[0], 'selectionScore'))
   assert.ok(!JSON.stringify(result).includes('contributors'))
   assert.ok(!JSON.stringify(result).includes('sourceTimestamps'))
   assert.ok(!JSON.stringify(result).includes('sourceMode'))
