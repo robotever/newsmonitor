@@ -157,10 +157,14 @@ def _public(candidate, *, dynamic=False):
                 'selectionCompleteness', 'relativeReturn5dRaw', 'indicators'}
     if not dynamic:
         internal |= {'selectionScore', 'selectedOn', 'retainedTradingDays'}
-    return {key: value for key, value in candidate.items() if key not in internal}
+    result = {key: value for key, value in candidate.items() if key not in internal}
+    result.setdefault('change1d', None)
+    result.setdefault('change5d', None)
+    return result
 
 
-def build_concept_payload(candidates, previous_dynamic, market_date, selected_at, config):
+def build_concept_payload(candidates, previous_dynamic, market_date, selected_at, config,
+                          *, reuse_previous=False):
     """Score candidates and build the derived-only core/dynamic payload."""
     scored = []
     for candidate in candidates:
@@ -174,7 +178,21 @@ def build_concept_payload(candidates, previous_dynamic, market_date, selected_at
                   key=lambda item: item.get('coreOrder', math.inf))
     if len(core) != 25:
         raise ValueError('INVALID_CORE_CONCEPTS')
-    dynamic = select_dynamic_concepts(scored, previous_dynamic, market_date, config)
+    if reuse_previous and previous_dynamic:
+        eligible = {item['id']: item for item in _ranked(scored, config)}
+        dynamic = []
+        for old in previous_dynamic:
+            current = eligible.get(old.get('id'))
+            if current is None:
+                raise ValueError('PREVIOUS_CONCEPT_UNAVAILABLE')
+            item = dict(current)
+            item['selectedOn'] = old.get('selectedOn')
+            item['retainedTradingDays'] = old.get('retainedTradingDays')
+            dynamic.append(item)
+        if len(dynamic) != config['conceptSelection']['dynamicSlots']:
+            raise ValueError('INVALID_PREVIOUS_CONCEPTS')
+    else:
+        dynamic = select_dynamic_concepts(scored, previous_dynamic, market_date, config)
     return {
         'selectionVersion': config['conceptSelection']['version'],
         'scoringVersion': config['conceptSelection']['scoringVersion'],

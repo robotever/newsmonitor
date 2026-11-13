@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "market-dashboard-v1",
+  "schemaVersion": "market-dashboard-v2",
   "scoringVersion": "market-score-v0.1",
   "normalization": {
     "winsorLower": 0.05,

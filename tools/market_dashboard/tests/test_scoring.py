@@ -90,7 +90,7 @@ class FormulaTests(unittest.TestCase):
                   'aShare':{'indicators':indicators}, 'news':[{'title':'ignored','sentiment':0}]}
         original = deepcopy(inputs)
         result = build_dashboard_payload(inputs, [], self.config)
-        self.assertEqual(result['schemaVersion'], 'market-dashboard-v1')
+        self.assertEqual(result['schemaVersion'], 'market-dashboard-v2')
         self.assertEqual(result['scoringVersion'], 'market-score-v0.1')
         self.assertEqual([result['aShare'][k] for k in ('strength','heat','risk')], [80,80,80])
         self.assertEqual(result['aShare']['completeness'],100)
