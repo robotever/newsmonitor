@@ -3,7 +3,10 @@
   "scoringVersion": "market-score-v0.1",
   "normalization": {
     "winsorLower": 0.05,
-    "winsorUpper": 0.95
+    "winsorUpper": 0.95,
+    "fixedBounds": {
+      "DGS10": {"min": 0, "max": 10}
+    }
   },
   "history": {
     "rollingObservations": 60,
