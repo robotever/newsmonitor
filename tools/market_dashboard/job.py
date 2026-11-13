@@ -512,8 +512,9 @@ def run_job(args, deps=None):
 
     deps is an optional dict: now, config, state_root, collector(config),
     builder(inputs, previous, config), publisher(payload, url, token, timeout,
-    config=...). All tests inject external I/O. Dry runs write no state at all;
-    skip-publish writes health only. Only a successful publish advances buckets
+    config=...). All tests inject external I/O. Live dry runs share the collection
+    lock but never write snapshot/health state; fixture dry runs write nothing.
+    Skip-publish writes health only. Only a successful publish advances buckets
     and the derived comparison history in last-success.json.
     """
     deps = deps or {}
@@ -538,7 +539,7 @@ def run_job(args, deps=None):
     last_status = 'never'
     payload = None
     try:
-        if not dry_run:
+        if not (dry_run and fixture):
             state_path.parent.mkdir(parents=True, exist_ok=True)
             lock = (state_path.parent / 'job.lock').open('a')
             try:
@@ -634,7 +635,7 @@ def run_job(args, deps=None):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--dry-run', action='store_true', help='Validate and summarize; no publication or state writes')
+    parser.add_argument('--dry-run', action='store_true', help='Validate and summarize; no publication or snapshot/health writes (live runs use the collection lock)')
     parser.add_argument('--fixture', action='store_true', help='Use sanitized synthetic fixtures and their fixed observation clock')
     parser.add_argument('--force', action='store_true', help='Bypass session gate only; validation/idempotency still apply')
     parser.add_argument('--skip-publish', action='store_true', help='Collect/validate and write health, without advancing last-success')

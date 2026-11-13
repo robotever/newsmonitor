@@ -294,6 +294,49 @@ class JobTests(unittest.TestCase):
             self.assertNotIn('private-token', health)
             self.assertTrue(job.run_job(self.args(), self.deps(directory)).success)
 
+    def test_live_dry_run_skips_collector_when_production_lock_is_held(self):
+        import fcntl
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / 'market-dashboard'
+            path.mkdir()
+            calls = []
+            def collector(config):
+                calls.append('collected')
+                return job.collect_batches(config, fixture=True)
+            with (path / 'job.lock').open('a') as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                result = job.run_job(self.args(dry_run=True), self.deps(directory, collector=collector))
+            self.assertTrue(result.success)
+            self.assertEqual(result.status, 'locked')
+            self.assertEqual(calls, [])
+            self.assertEqual(list(Path(directory).rglob('*.json')), [])
+
+    def test_live_dry_run_holds_shared_lock_but_writes_no_snapshot_or_health(self):
+        import fcntl
+        with TemporaryDirectory() as directory:
+            lock_path = Path(directory) / 'market-dashboard/job.lock'
+            lock_path.parent.mkdir()
+            calls, held_during_collection = [], []
+            def collector(config):
+                calls.append('collected')
+                with lock_path.open('a') as contender:
+                    try:
+                        fcntl.flock(contender, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    except BlockingIOError:
+                        held_during_collection.append(True)
+                    else:
+                        held_during_collection.append(False)
+                return job.collect_batches(config, fixture=True)
+            result = job.run_job(self.args(dry_run=True), self.deps(directory, collector=collector))
+            self.assertTrue(result.success, result.error_code)
+            self.assertEqual(result.status, 'dry_run')
+            self.assertEqual(calls, ['collected'])
+            self.assertEqual(held_during_collection, [True])
+            self.assertEqual(list(Path(directory).rglob('*.json')), [])
+            self.assertEqual(lock_path.read_bytes(), b'')
+            with lock_path.open('a') as released:
+                fcntl.flock(released, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
     def test_source_observations_during_collection_use_completion_clock(self):
         clocks = iter([NOW, NOW.replace(minute=16)])
         def collector(config):
