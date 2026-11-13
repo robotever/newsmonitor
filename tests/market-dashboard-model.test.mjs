@@ -74,9 +74,9 @@ test('weekends, lunch and configured holidays do not count as intraday delay', a
   assert.equal(deriveMarketDashboardView(payload({ dataStatus: { completeness: 80, stale: true, missing: [] } }), new Date('2026-11-14T02:00:00Z')).freshness.stale, true)
 })
 
-test('daily/monthly provenance has configurable age thresholds and preserves oldest evidence date', async () => {
+test('daily/monthly observation has configurable age thresholds and preserves oldest evidence date', async () => {
   const { deriveMarketDashboardView } = await model()
-  const p = payload({ global: object('global', { frequency: 'daily', sourceTimestamps: [
+  const p = payload({ global: object('global', { frequency: 'daily', observedAt: '2026-10-23T00:00:00Z', sourceTimestamps: [
     { source: 'FRED', timestamp: '2026-10-23T00:00:00Z' }, { source: 'MX', timestamp: observed } ] }) })
   const view = deriveMarketDashboardView(p, now)
   assert.equal(view.global.freshness.stale, true)
@@ -84,16 +84,45 @@ test('daily/monthly provenance has configurable age thresholds and preserves old
   assert.equal(deriveMarketDashboardView(p, now, { staleAfterMs: { daily: 30 * 86400000 } }).global.freshness.stale, false)
   p.global.frequency = 'monthly'
   assert.equal(deriveMarketDashboardView(p, now).global.freshness.stale, false)
-  p.global.sourceTimestamps[0].timestamp = '2026-08-01T00:00:00Z'
+  p.global.observedAt = '2026-08-01T00:00:00Z'
   assert.equal(deriveMarketDashboardView(p, now).global.freshness.stale, true)
+})
+
+test('mixed-frequency provenance stays display-only while object observation and server stale govern freshness', async () => {
+  const { deriveMarketDashboardView } = await model()
+  const p = payload({ global: object('global', { frequency: 'daily', observedAt: '2026-11-12T00:00:00Z', sourceTimestamps: [
+    { source: 'FRED', timestamp: '2026-10-01T00:00:00Z' },
+    { source: 'MX', timestamp: '2026-11-12T00:00:00Z' },
+  ] }) })
+  const fresh = deriveMarketDashboardView(p, now).global.freshness
+  assert.equal(fresh.stale, false)
+  assert.equal(fresh.oldestSourceAt, '2026-10-01T00:00:00Z')
+  assert.equal(fresh.ageMs, 94800000)
+  delete p.global.observedAt
+  assert.equal(deriveMarketDashboardView(p, now).global.freshness.ageMs, 300000)
+  p.dataStatus.stale = true
+  assert.equal(deriveMarketDashboardView(p, now).global.freshness.stale, true)
+  assert.equal(deriveMarketDashboardView(p, now).global.freshness.oldestSourceAt, '2026-10-01T00:00:00Z')
 })
 
 test('comparison badges distinguish close fallback, missing calendar and unavailable comparisons', async () => {
   const { deriveMarketDashboardView } = await model()
   const view = deriveMarketDashboardView(payload({ industries: [object('a', { comparisonFallback: 'close',
     change1d: { strength: 0, heat: null, risk: -2 }, comparisonUnavailable: { change5d: 'missingTradingCalendar' } }), object('b')] }), now)
-  assert.deepEqual(view.industries[0].comparisonBadges, { change1d: '收盘回退', change5d: '缺少交易日历' })
+  assert.deepEqual(view.industries[0].comparisonBadges, { change1d: '至少一项使用收盘回退', change5d: '缺少交易日历' })
   assert.deepEqual(view.industries[1].comparisonBadges, { change1d: '暂无可比快照', change5d: '暂无可比快照' })
+})
+
+test('object-wide close fallback never claims either available comparison window definitely fell back', async () => {
+  const { deriveMarketDashboardView } = await model()
+  const comparison = { strength: 2, heat: null, risk: -1 }
+  const view = deriveMarketDashboardView(payload({ industries: [object('a', {
+    comparisonFallback: 'close', change1d: comparison, change5d: comparison,
+  }), object('b', { change1d: comparison, change5d: comparison })] }), now)
+  assert.deepEqual(view.industries[0].comparisonBadges, {
+    change1d: '至少一项使用收盘回退', change5d: '至少一项使用收盘回退',
+  })
+  assert.deepEqual(view.industries[1].comparisonBadges, { change1d: '同口径比较', change5d: '同口径比较' })
 })
 
 test('four rankings use supplied scores and change5d/1d; null sorts last and ties use stable IDs', async () => {

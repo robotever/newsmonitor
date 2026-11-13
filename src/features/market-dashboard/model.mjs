@@ -36,7 +36,7 @@ function comparisonBadge(object, key) {
   if (reason === 'missingTradingCalendar') return '缺少交易日历'
   if (reason === 'missingTargetTradingDate') return '缺少目标交易日'
   if (object[key] == null || reason) return '暂无可比快照'
-  return object.comparisonFallback === 'close' ? '收盘回退' : '同口径比较'
+  return object.comparisonFallback === 'close' ? '至少一项使用收盘回退' : '同口径比较'
 }
 function improvement(object) {
   const five = object.change5d?.strength, one = object.change1d?.strength
@@ -63,13 +63,11 @@ export function deriveMarketDashboardView(payload, now = new Date(), options = {
   const present = object => {
     const sources = object.sourceTimestamps.map(source => source.timestamp)
     const oldestSourceAt = [...sources].sort((a, b) => Date.parse(a) - Date.parse(b))[0] ?? null
-    const timestamps = [object.observedAt ?? payload.observedAt, ...sources]
-    const oldest = timestamps.sort((a, b) => Date.parse(a) - Date.parse(b))[0]
     const stage = object.completeness < 50 ? null : object.stage ?? null
     return { ...object, stage, stageLabel: stage ?? (object.completeness < 50 ? '证据不足' : '暂无阶段结论'),
       scoreLabels: Object.fromEntries(Object.keys(LABELS).map(axis => [axis, scoreLabel(axis, object[axis])])),
       evidenceInsufficient: object.completeness < 70, evidenceLabel: object.completeness < 70 ? '证据不足' : '证据充分',
-      freshness: freshness(oldest, object.frequency ?? 'intraday', ctx, oldestSourceAt),
+      freshness: freshness(object.observedAt ?? payload.observedAt, object.frequency ?? 'intraday', ctx, oldestSourceAt),
       comparisonBadges: { change1d: comparisonBadge(object, 'change1d'), change5d: comparisonBadge(object, 'change5d') }, ...improvement(object) }
   }
   const industries = payload.industries.map(present).sort(byId)
