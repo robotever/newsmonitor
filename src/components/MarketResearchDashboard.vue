@@ -30,6 +30,7 @@
         </div>
         <MarketStyleGrid :items="dashboard.styles" :observed-at="dashboard.observedAt" />
         <IndustryHeatmap :items="dashboard.industries" :rankings="dashboard.rankings" :observed-at="dashboard.observedAt" />
+        <ConceptRadar :core="dashboard.coreConcepts" :dynamic="dashboard.dynamicConcepts" :rankings="dashboard.conceptRankings" :selected-at="dashboard.concepts.selectedAt" :observed-at="dashboard.observedAt" />
       </template>
       <div v-else-if="!loading" class="market-empty"><h3>研究面板等待首次有效数据</h3><p>全局环境、A 股、六类风格与 35 个行业将在快照可用后显示。</p><button class="market-button" type="button" @click="refresh">重新读取</button></div>
     </div>
@@ -44,6 +45,7 @@ import type { MarketDashboardPayload, MarketHistoryPayload, MarketLoadError } fr
 import MarketScoreCard from './MarketScoreCard.vue'
 import MarketStyleGrid from './MarketStyleGrid.vue'
 import IndustryHeatmap from './IndustryHeatmap.vue'
+import ConceptRadar from './ConceptRadar.vue'
 const latest = shallowRef<MarketDashboardPayload | null>(null)
 const history = shallowRef<MarketHistoryPayload | null>(null)
 const latestError = ref<MarketLoadError | null>(null)

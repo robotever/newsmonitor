@@ -1,6 +1,6 @@
 import test, { before, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { createServer } from 'vite'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -60,4 +60,30 @@ test('industry panorama renders all 35 accessible expansions and four truthful r
   assert.match(html.replace(/<!--[\s\S]*?-->/g, ''), /market-industry__quality">80%<span class="market-badge is-stale">数据滞后/)
   assert.match(html, /<select/)
   assert.equal((html.match(/<summary><span class="market-industry__name"/g) ?? []).length, 35)
+})
+
+test('concept radar defaults to dynamic ten, switches to core 25 and scopes summaries and rankings', async () => {
+  const core = Array.from({ length: 25 }, (_, i) => object(`884${2000 + i}.WI`, { name: `核心概念${i}` }))
+  const dynamic = Array.from({ length: 10 }, (_, i) => object(`884${2100 + i}.WI`, {
+    name: `动态热点${i}`, selectionScore: 90 - i, selectedOn: '2026-11-13', retainedTradingDays: i + 1,
+    ...(i === 0 ? { completeness: 60, observedAt: '2026-11-13T00:00:00Z' } : {}),
+  }))
+  const dashboard = view({ concepts: { selectionVersion: 'concept-selection-v0.1',
+    scoringVersion: 'concept-score-v0.1', selectedAt: observed, core, dynamic } })
+  const props = { core: dashboard.coreConcepts, dynamic: dashboard.dynamicConcepts,
+    rankings: dashboard.conceptRankings, selectedAt: dashboard.concepts.selectedAt, observedAt: observed }
+  const dynamicHtml = await render('ConceptRadar', props)
+  assert.equal((dynamicHtml.match(/data-concept=/g) ?? []).length, 10)
+  assert.ok(dynamicHtml.includes('动态热点0'))
+  assert.ok(!dynamicHtml.includes('核心概念0'))
+  for (const text of ['动态热点 10', '核心概念 25', '强度前五', '改善前五', '热度前五', '风险前五',
+    'Wind 结构化行情统一评分', '妙想仅用于候选发现', '名单更新', '今日新入选', '证据不足', '数据滞后']) assert.ok(dynamicHtml.includes(text), text)
+  assert.match(dynamicHtml, /role="tab" aria-selected="true" aria-controls="concept-panel"/)
+  const coreHtml = await render('ConceptRadar', { ...props, initialTab: 'core' })
+  assert.equal((coreHtml.match(/data-concept=/g) ?? []).length, 25)
+  assert.ok(coreHtml.includes('核心概念0'))
+  assert.ok(!coreHtml.includes('动态热点0'))
+
+  const dashboardSource = readFileSync(new URL('../src/components/MarketResearchDashboard.vue', import.meta.url), 'utf8')
+  assert.ok(dashboardSource.indexOf('<ConceptRadar') > dashboardSource.indexOf('<IndustryHeatmap'))
 })
