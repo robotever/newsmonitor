@@ -13,6 +13,8 @@ import json
 import math
 import subprocess
 
+from .concepts import concept_definitions
+
 
 WIND_SKILL = Path.home() / '.agents/skills/wind-mcp-skill'
 STYLE_DEFINITIONS = (
@@ -31,6 +33,11 @@ STYLE_FIELDS = ('最新交易日', '交易时间', '中文简称', '涨跌幅', 
 INDUSTRY_FIELDS = ('最新涨跌幅(%)', '最新换手率(%)', '最新成交额(亿元)', '最新主力净流入额(亿元)', '上涨家数', '下跌家数', '5日涨跌幅', '20日涨跌幅')
 INDUSTRY_PRICE_FIELDS = ('最新交易日', '交易时间', '中文简称', '涨跌幅', '成交额', '换手率',
                          '5日涨跌幅', '20日涨跌幅', '当日主力净流入额', '上涨家数', '下跌家数')
+CONCEPT_PRICE_FIELDS = ('最新交易日', '交易时间', '中文简称', '涨跌幅', '5日涨跌幅', '20日涨跌幅',
+                        '成交额', '换手率', '当日主力净流入额', '近5日主力净流入额',
+                        '近20日主力净流入额', '上涨家数', '下跌家数', '平盘家数')
+CONCEPT_UNITS = {'成交额': '元', '当日主力净流入额': '元', '近5日主力净流入额': '元',
+                 '近20日主力净流入额': '元', '上涨家数': '个', '下跌家数': '个', '平盘家数': '个'}
 
 
 @dataclass(frozen=True)
@@ -221,6 +228,33 @@ def collect_wind_industries(runner, config):
                 if field in row['_units']:
                     row['_units'][alias] = row['_units'][field]
     return batch
+
+
+def collect_wind_concepts(runner, dashboard_config, concept_config):
+    """Collect one verified concept cross-section in serial batches of at most 50."""
+    definitions = concept_definitions(concept_config)
+    rows, errors = [], []
+    for offset in range(0, len(definitions), 50):
+        batch = _wind(runner, dashboard_config, 'concepts', definitions[offset:offset + 50],
+                      CONCEPT_PRICE_FIELDS)
+        if not batch.rows:
+            return SourceBatch('Wind', source_mode='wind', errors=batch.errors)
+        if any(error.get('code') == 'MISSING_FIELDS' and 'timestamp' in error.get('fields', [])
+               for error in batch.errors):
+            return SourceBatch('Wind', source_mode='wind', errors=batch.errors)
+        for row in batch.rows:
+            units = row.get('_units', {})
+            if any(units.get(field) != unit for field, unit in CONCEPT_UNITS.items()):
+                return SourceBatch('Wind', source_mode='wind',
+                                   errors=[_error('Wind', 'UNIT_MISMATCH', 'concepts')])
+        rows.extend(batch.rows)
+        errors.extend(batch.errors)
+    expected = [code for code, _ in definitions]
+    actual = [row.get('id') for row in rows]
+    if actual != expected or len(set(actual)) != len(actual):
+        return SourceBatch('Wind', source_mode='wind',
+                           errors=[_error('Wind', 'IDENTITY_MISMATCH', 'concepts')])
+    return SourceBatch('Wind', rows, 'wind', errors, not errors)
 
 
 # Reuses all ten series IDs/frequencies in src/features/debt-monitor/api.mjs.

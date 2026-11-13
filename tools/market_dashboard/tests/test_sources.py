@@ -6,6 +6,7 @@ from contextlib import redirect_stdout
 import unittest
 from pathlib import Path
 from tools.market_dashboard import sources
+from tools.market_dashboard.concepts import concept_definitions, load_concept_config
 
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
@@ -16,6 +17,122 @@ def fixture(name):
 
 
 class SourceTests(unittest.TestCase):
+
+    def setUp(self):
+        self.collect_wind_concepts = getattr(sources, 'collect_wind_concepts', None)
+
+    @staticmethod
+    def concept_envelope(definitions, *, timestamp='2026-11-13T15:00:02.000+08:00',
+                         units=None):
+        names = ['最新交易日', '交易时间', '中文简称', '涨跌幅', '5日涨跌幅', '20日涨跌幅',
+                 '成交额', '换手率', '当日主力净流入额', '近5日主力净流入额',
+                 '近20日主力净流入额', '上涨家数', '下跌家数', '平盘家数', 'Wind代码']
+        columns = [{'name': name, 'type': 'string'} for name in names]
+        rows = []
+        for index, (code, name) in enumerate(definitions):
+            rows.append(['20261113', timestamp, name, str(index / 10), str(index / 5),
+                         str(index / 2), str(1000000000 + index), '2.5', str(index * 1000),
+                         str(index * 2000), str(index * 3000), '20', '10', '1', code])
+        return {'data': {'columns': columns, 'rows': rows, 'unit': units or {
+            '成交额': '元', '当日主力净流入额': '元', '近5日主力净流入额': '元',
+            '近20日主力净流入额': '元', '上涨家数': '个', '下跌家数': '个', '平盘家数': '个'}}}
+
+    def test_concepts_use_two_serial_batches_and_preserve_exact_identities_and_units(self):
+        self.assertIsNotNone(self.collect_wind_concepts, 'concept collector is missing')
+        config = load_concept_config()
+        definitions = concept_definitions(config)
+        calls = []
+
+        def runner(argv, **kwargs):
+            calls.append((argv, kwargs))
+            requested = json.loads(argv[-1])['windcode'].split(',')
+            by_id = dict(definitions)
+            return self.concept_envelope([(code, by_id[code]) for code in requested])
+
+        batch = self.collect_wind_concepts(runner, {}, config)
+
+        self.assertTrue(batch.complete)
+        self.assertEqual(len(batch.rows), 75)
+        self.assertEqual([len(json.loads(call[0][-1])['windcode'].split(',')) for call in calls], [50, 25])
+        self.assertTrue(all(call[0][2:5] == ['call', 'index_data', 'get_index_price_indicators'] for call in calls))
+        self.assertEqual([row['id'] for row in batch.rows], [code for code, _ in definitions])
+        self.assertEqual(batch.rows[0]['_units']['成交额'], '元')
+        self.assertEqual(batch.rows[0]['_timestamp'], '2026-11-13T15:00:02+08:00')
+
+    def test_concept_first_batch_failure_stops_and_second_batch_failure_rejects_all(self):
+        self.assertIsNotNone(self.collect_wind_concepts, 'concept collector is missing')
+        config = load_concept_config()
+        definitions = concept_definitions(config)
+        calls = []
+
+        def failed_probe(argv, **kwargs):
+            calls.append(argv)
+            return {'ok': False, 'code': 'AUTH_ERROR', 'message': 'secret'}
+
+        batch = self.collect_wind_concepts(failed_probe, {}, config)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(batch.rows, [])
+        self.assertEqual(batch.errors[0]['code'], 'AUTH_ERROR')
+        self.assertNotIn('secret', str(batch.errors))
+
+        calls.clear()
+        by_id = dict(definitions)
+        def broken_second(argv, **kwargs):
+            calls.append(argv)
+            requested = json.loads(argv[-1])['windcode'].split(',')
+            values = [(code, by_id[code]) for code in requested]
+            if len(calls) == 2:
+                values[-1] = values[0]
+            return self.concept_envelope(values)
+
+        batch = self.collect_wind_concepts(broken_second, {}, config)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(batch.rows, [])
+        self.assertEqual(batch.errors[0]['code'], 'IDENTITY_MISMATCH')
+
+    def test_concept_batch_rejects_missing_wrong_or_duplicate_identifiers(self):
+        self.assertIsNotNone(self.collect_wind_concepts, 'concept collector is missing')
+        config = load_concept_config()
+        definitions = concept_definitions(config)
+        by_id = dict(definitions)
+        for mutation in ('missing', 'wrong', 'duplicate'):
+            calls = 0
+            def runner(argv, **kwargs):
+                nonlocal calls
+                calls += 1
+                requested = json.loads(argv[-1])['windcode'].split(',')
+                values = [(code, by_id[code]) for code in requested]
+                if calls == 1:
+                    if mutation == 'missing':
+                        values.pop()
+                    elif mutation == 'wrong':
+                        values[-1] = ('8849999.WI', '未知指数')
+                    else:
+                        values[-1] = values[0]
+                return self.concept_envelope(values)
+            with self.subTest(mutation=mutation):
+                batch = self.collect_wind_concepts(runner, {}, config)
+                self.assertEqual(batch.rows, [])
+                self.assertEqual(batch.errors[0]['code'], 'IDENTITY_MISMATCH')
+
+    def test_concept_batch_rejects_ambiguous_units_or_missing_timestamps(self):
+        self.assertIsNotNone(self.collect_wind_concepts, 'concept collector is missing')
+        config = load_concept_config()
+        definitions = concept_definitions(config)
+        by_id = dict(definitions)
+        for problem in ('units', 'timestamp'):
+            def runner(argv, **kwargs):
+                requested = json.loads(argv[-1])['windcode'].split(',')
+                values = [(code, by_id[code]) for code in requested]
+                if problem == 'units':
+                    return self.concept_envelope(values, units={
+                        '成交额': 'unknown', '当日主力净流入额': '元', '近5日主力净流入额': '元',
+                        '近20日主力净流入额': '元', '上涨家数': '个', '下跌家数': '个', '平盘家数': '个'})
+                return self.concept_envelope(values, timestamp=None)
+            with self.subTest(problem=problem):
+                batch = self.collect_wind_concepts(runner, {}, config)
+                self.assertEqual(batch.rows, [])
+                self.assertEqual(batch.errors[0]['code'], 'UNIT_MISMATCH' if problem == 'units' else 'MISSING_FIELDS')
 
     def test_nested_content_retains_fields_units_and_nulls(self):
         rows = sources.parse_wind_content(fixture("wind-breadth.json"))
