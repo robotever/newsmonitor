@@ -1,0 +1,11 @@
+name = "newsmonitor"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-11-13"
+
+# Provision D1 and replace this commented example with the real binding later.
+# Never commit secrets. Set MARKET_DASHBOARD_PUBLISH_TOKEN through Cloudflare Secrets.
+# [[d1_databases]]
+# binding = "MARKET_DB"
+# database_name = "market-dashboard"
+# database_id = "<provisioned-database-id>"
+# migrations_dir = "migrations"
