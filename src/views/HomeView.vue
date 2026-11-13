@@ -1,6 +1,7 @@
 <template>
   <main class="home-layout">
     <div class="home-content">
+      <MarketResearchDashboard />
       <DebtRiskDashboard />
       <div class="news-grid">
       <div
@@ -33,6 +34,7 @@ import { NEWS_SOURCES } from '@/api/sources'
 import NewsCard from '@/components/NewsCard.vue'
 import VerticalTicker from '@/components/VerticalTicker.vue'
 import DebtRiskDashboard from '@/components/DebtRiskDashboard.vue'
+import MarketResearchDashboard from '@/components/MarketResearchDashboard.vue'
 
 const store = useNewsStore()
 onMounted(() => { store.fetchAll(); store.startAutoRefresh() })
