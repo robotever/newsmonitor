@@ -1,0 +1,34 @@
+{
+  "status": 0,
+  "data": {
+    "data": {
+      "searchDataResultDTO": {
+        "dataTableDTOList": [
+          {
+            "entityName": "现货黄金",
+            "code": "SYNTHETIC_GOLD",
+            "table": {
+              "headName": [
+                "2026-11-12"
+              ],
+              "price": [
+                2500.0
+              ]
+            },
+            "nameMap": {
+              "price": "最新价"
+            },
+            "indicatorOrder": [
+              "price"
+            ],
+            "field": {
+              "returnName": "最新价",
+              "unit": "美元/盎司",
+              "dateGranularity": "DAY"
+            }
+          }
+        ]
+      }
+    }
+  }
+}
