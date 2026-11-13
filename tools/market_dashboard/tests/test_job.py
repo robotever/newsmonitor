@@ -459,9 +459,6 @@ class JobTests(unittest.TestCase):
             self.assertFalse((Path(directory) / 'market-dashboard/last-success.json').exists())
 
 
-if __name__ == '__main__':
-    unittest.main()
-
 class CloseFreshnessTests(unittest.TestCase):
     def test_final_close_remains_fresh_during_afternoon_and_evening(self):
         row = {'_timestamp': '2026-11-13T15:00:03+08:00'}
@@ -485,3 +482,7 @@ class CloseFreshnessTests(unittest.TestCase):
         intraday = datetime.fromisoformat('2026-11-13T14:59:00+08:00')
         self.assertTrue(job._fresh({'_timestamp': '2026-11-13T14:29:00+08:00'}, intraday))
         self.assertFalse(job._fresh({'_timestamp': '2026-11-13T14:28:59+08:00'}, intraday))
+
+
+if __name__ == '__main__':
+    unittest.main()

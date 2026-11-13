@@ -51,6 +51,8 @@ try:
                 os.environ[key] = dotenv_value(value)
     os.environ['MARKET_DASHBOARD_STATE_ROOT'] = str(root / 'state')
     logs = root / 'logs/market-dashboard'
+    if (root / 'logs').is_symlink() or logs.is_symlink():
+        raise ValueError('log directory symlinks are not supported')
     logs.mkdir(parents=True, exist_ok=True, mode=0o700)
     logs.chmod(0o700)
     # Reuse the parent project's copy-truncate policy (2 MB, three backups).

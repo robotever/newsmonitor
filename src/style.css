@@ -215,6 +215,7 @@
   .market-score-card h3 { color: #c8e8f8; font-size: 13px; font-weight: 600; }
   .market-badge { border: 1px solid #2b5165; color: #a7c8da; padding: 1px 5px; font-size: 9px; line-height: 1.6; }
   .market-badge.is-missing, .market-notice { border: 1px dashed #506171; color: #aab8c3; background: #121c25; }
+  .market-badge.is-stale { border: 1px solid #7c8399; color: #c2c6d3; background: #232936; }
   .market-dashboard__notice { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; margin: 8px 10px 0; padding: 8px 10px; font-size: 11px; overflow-wrap: anywhere; }
   .market-dashboard__notice strong { font-weight: 500; color: #d0d9e0; }
   .market-score-axes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }

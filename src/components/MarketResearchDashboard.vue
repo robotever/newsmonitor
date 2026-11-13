@@ -1,7 +1,7 @@
 <template>
   <section class="market-dashboard fv-card" aria-labelledby="market-dashboard-title" :aria-busy="loading">
     <header class="market-dashboard__header">
-      <div><div class="market-dashboard__eyebrow">MARKET RESEARCH / 全市场研究</div><h2 id="market-dashboard-title">市场研究雷达 <span>强度 · 热度 · 风险</span></h2></div>
+      <div><div class="market-dashboard__eyebrow">MARKET RESEARCH / 全市场研究</div><h2 id="market-dashboard-title">市场研究雷达 <span>v0.1 / 试运行 · 强度 · 热度 · 风险</span></h2></div>
       <button type="button" class="market-button" :disabled="loading" @click="refresh">{{ loading ? '加载中…' : '刷新研究数据' }}</button>
     </header>
     <div class="market-status" aria-live="polite">
@@ -9,7 +9,7 @@
         <time :datetime="dashboard.observedAt">{{ formatDate(dashboard.observedAt) }} 北京时间</time>
         <span>{{ dashboard.session === 'close' ? '收盘确认' : '盘中快照' }}</span>
         <span :class="{ 'market-badge is-missing': dashboard.dataStatus.completeness < 70 }">完整度 {{ dashboard.dataStatus.completeness }}%<template v-if="dashboard.dataStatus.completeness < 70"> · 证据不足</template></span>
-        <span class="market-badge" :class="{ 'is-missing': dashboard.freshness.stale }">{{ dashboard.freshness.label }}</span>
+        <span class="market-badge" :class="{ 'is-stale': dashboard.freshness.stale }">{{ dashboard.freshness.label }}</span>
         <span class="market-status__version">{{ dashboard.schemaVersion }} / {{ dashboard.scoringVersion }}</span>
       </template>
       <span v-else>{{ loading ? '正在读取最新研究快照…' : '等待有效研究快照' }}</span>

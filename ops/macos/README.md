@@ -25,7 +25,9 @@ export MARKET_DASHBOARD_PYTHON="$(command -v python3)"
 Preparation validates the existing `scripts/rotate_service_logs.py` path, writes
 `~/Library/LaunchAgents/com.robot-ever.newsmonitor.market-dashboard.plist` with
 mode 0600, and creates `logs/market-dashboard/` with mode 0700 and private logs.
-It preserves the first differing pre-install plist as `.plist.bak`. Repeating
+Both the wrapper and installer reject symlinks at `logs` and
+`logs/market-dashboard` before creating/chmodding files; individual log files
+also reject symlinks. It preserves the first differing pre-install plist as `.plist.bak`. Repeating
 preparation with identical configuration leaves that backup intact.
 
 Review the rendered plist before opting in:

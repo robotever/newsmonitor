@@ -82,6 +82,8 @@ try:
             or action not in ('--prepare', '--enable', '--disable', '--uninstall', '--restore')):
         raise ValueError('unknown action')
     validate_checkout()
+    if (root / 'logs').is_symlink() or (root / 'logs/market-dashboard').is_symlink():
+        raise ValueError('log directory symlinks are not supported')
     if action in ('--disable', '--uninstall', '--restore'):
         disable()
         if action == '--uninstall' and target.exists():

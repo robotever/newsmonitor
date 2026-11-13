@@ -4,13 +4,13 @@
       <h3 id="market-industry-title">行业全景 <span>{{ items.length }} INDUSTRIES</span></h3>
       <label class="market-sort">排序 <select v-model="sortBy" aria-label="行业排序"><option value="strength">强度 ↓</option><option value="heat">热度 ↓</option><option value="risk">风险 ↓</option></select></label>
     </div>
-    <p class="market-legend"><span class="strength">强度：灰 → 蓝绿</span><span class="heat">热度：灰 → 黄</span><span class="risk">风险：绿 → 红</span><span>— / 虚线：缺失或滞后</span></p>
+    <p class="market-legend"><span class="strength">强度：灰 → 蓝绿</span><span class="heat">热度：灰 → 黄</span><span class="risk">风险：绿 → 红</span><span>— / 虚线：缺失 · 灰紫实线：滞后</span></p>
     <div class="market-heatmap">
       <details v-for="item in sorted" :key="item.id" class="market-industry" :data-industry="item.id" :class="{ 'has-missing': item.evidenceInsufficient || item.freshness.stale }">
         <summary>
           <span class="market-industry__name">{{ item.name ?? item.id }}</span>
           <span class="market-industry__scores"><span v-for="axis in axes" :key="axis.key" class="market-heat-cell" :class="[axis.key, band(item[axis.key])]" :aria-label="`${axis.label} ${item[axis.key] ?? '暂无数据'}`"><small>{{ axis.short }}</small>{{ item[axis.key] ?? '—' }}</span></span>
-          <span class="market-industry__quality">{{ item.completeness }}%<template v-if="item.evidenceInsufficient"> · 证据不足</template><template v-if="item.freshness.stale"> · {{ item.freshness.label }}</template><span class="market-industry__expand" aria-hidden="true">＋</span></span>
+          <span class="market-industry__quality">{{ item.completeness }}%<template v-if="item.evidenceInsufficient"> · 证据不足</template><span v-if="item.freshness.stale" class="market-badge is-stale">{{ item.freshness.label }}</span><span class="market-industry__expand" aria-hidden="true">＋</span></span>
         </summary>
         <MarketScoreCard :item="item" :title="item.name ?? item.id" :observed-at="observedAt" />
       </details>

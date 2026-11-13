@@ -104,6 +104,40 @@ class OperationsTests(unittest.TestCase):
         self.assertEqual(logs.stat().st_mode & 0o777, 0o700)
         self.assertEqual((logs / 'job.log').stat().st_mode & 0o777, 0o600)
 
+    def test_log_directory_symlinks_fail_before_writes_or_launchctl(self):
+        self.copy_ops()
+        self.make_checkout()
+        self.trap_launchctl()
+        (self.root / 'scripts/rotate_service_logs.py').write_text('def rotate(path): pass\n')
+        outside = Path(self.tmp.name) / 'outside logs'
+        outside.mkdir(mode=0o755)
+        sentinel = outside / 'sentinel.log'
+        sentinel.write_text('retained')
+        sentinel.chmod(0o644)
+        for relative in ('logs', 'logs/market-dashboard'):
+            link = self.root / relative
+            link.parent.mkdir(parents=True, exist_ok=True)
+            link.symlink_to(outside, target_is_directory=True)
+            for script, args in (('run-market-dashboard.sh', ('--dry-run',)),
+                                 ('install-market-dashboard-service.sh', ('--prepare',)),
+                                 ('install-market-dashboard-service.sh', ('--enable',))):
+                with self.subTest(relative=relative, script=script, args=args):
+                    result = self.execute(script, *args)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertEqual(sentinel.read_text(), 'retained')
+                    self.assertEqual(sentinel.stat().st_mode & 0o777, 0o644)
+                    self.assertEqual(outside.stat().st_mode & 0o777, 0o755)
+                    self.assertEqual(sorted(p.name for p in outside.iterdir()), ['sentinel.log'])
+                    self.assertFalse((Path(self.env['HOME']) / 'Library/LaunchAgents').exists())
+                    self.assertFalse((Path(self.env['HOME']) / 'launchctl-calls').exists())
+            link.unlink()
+
+    def test_direct_job_test_module_includes_close_freshness_tests(self):
+        result = subprocess.run([sys.executable, '-m', 'tools.market_dashboard.tests.test_job', '-v'],
+                                cwd=REPO, capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('CloseFreshnessTests.test_final_close_remains_fresh', result.stderr)
+
     def test_installer_renders_idempotently_without_starting_and_recovers_previous_file(self):
         self.copy_ops()
         self.make_checkout()

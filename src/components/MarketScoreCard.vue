@@ -26,7 +26,7 @@
       <p v-else class="market-style-direction">5日强度 <strong>{{ delta(item.change5d?.strength) }}</strong></p>
       <div class="market-score-card__quality">
         <span :class="{ 'market-badge is-missing': item.evidenceInsufficient }">完整度 {{ item.completeness }}%<template v-if="item.evidenceInsufficient"> · 证据不足</template></span>
-        <span v-if="item.freshness.stale" class="market-badge is-missing">{{ item.freshness.label }}</span>
+        <span v-if="item.freshness.stale" class="market-badge is-stale">{{ item.freshness.label }}</span>
       </div>
       <p v-if="!compact" class="market-object-time">{{ frequencyLabel }} · <time :datetime="item.observedAt ?? observedAt">{{ formatDate(item.observedAt ?? observedAt) }}</time></p>
       <details class="market-evidence">
