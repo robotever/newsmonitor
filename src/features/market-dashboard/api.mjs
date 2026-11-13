@@ -11,6 +11,14 @@ const shape = (value, required, optional = []) => record(value) && required.ever
   && Object.keys(value).every(key => required.includes(key) || optional.includes(key))
 const number = (value, min = 0, max = 100) => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
 const strings = value => Array.isArray(value) && value.every(item => typeof item === 'string' && item.length <= 200)
+const noSelection = value => !['selectionScore', 'selectedOn', 'retainedTradingDays'].some(key => Object.hasOwn(value, key))
+const calendarDate = value => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (!match) return false
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3])
+  return year >= 1 && month >= 1 && month <= 12 && day >= 1
+    && day <= new Date(Date.UTC(year, month, 0)).getUTCDate()
+}
 
 function timestamp(value) {
   if (typeof value !== 'string') return false
@@ -64,10 +72,9 @@ function validConcepts(value, validator, compact = false) {
     || !Array.isArray(value.dynamic) || value.dynamic.length !== 10) return false
   const ids = [...value.core, ...value.dynamic].map(item => item?.id)
   if (new Set(ids).size !== 35 || !ids.every(id => typeof id === 'string' && /^884\d{2,4}\.WI$/.test(id))) return false
-  if (!value.core.every(item => validator(item) && !['selectionScore', 'selectedOn', 'retainedTradingDays']
-    .some(key => Object.hasOwn(item, key)))) return false
+  if (!value.core.every(item => validator(item) && noSelection(item))) return false
   return value.dynamic.every(item => validator(item) && (compact || number(item.selectionScore)
-    && typeof item.selectedOn === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(item.selectedOn)
+    && calendarDate(item.selectedOn)
     && Number.isInteger(item.retainedTradingDays) && item.retainedTradingDays >= 1))
 }
 function validObjects(value, validator) {
@@ -79,7 +86,8 @@ function validObjects(value, validator) {
 }
 function validLatest(value) {
   if (!shape(value, ['schemaVersion', 'scoringVersion', 'observedAt', 'marketDate', 'session', 'global', 'aShare', 'styles', 'industries', 'concepts', 'dataStatus'], ['sourceMode'])
-    || value.schemaVersion !== 'market-dashboard-v2' || !validObservation(value) || !validObjects(value, validObject)
+    || value.schemaVersion !== 'market-dashboard-v2' || !validObservation(value)
+    || !validObjects(value, item => validObject(item) && noSelection(item))
     || !validConcepts(value.concepts, validObject)) return false
   const status = value.dataStatus
   const objects = [value.global, value.aShare, ...value.styles, ...value.industries,

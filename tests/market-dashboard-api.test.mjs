@@ -59,9 +59,19 @@ test('invalid JSON, empty success and malformed latest schema remain distinct sa
   assert.equal((await loadMarketDashboard(async () => response(null))).error.code, 'INVALID_SCHEMA')
   const mutations = [
     p => { p.industries.pop() }, p => { p.styles[0].id = p.styles[1].id },
+    p => { p.schemaVersion = 'market-dashboard-v1' },
+    p => { p.concepts.core.pop() }, p => { p.concepts.dynamic.pop() },
+    p => { p.concepts.dynamic[0].id = p.concepts.core[0].id },
+    p => { p.concepts.selectionVersion = 'unknown' }, p => { p.concepts.scoringVersion = 'unknown' },
+    p => { p.concepts.selectedAt = 'invalid' }, p => { p.concepts.core[0].selectionScore = 50 },
+    p => { p.concepts.dynamic[0].selectionScore = 101 },
+    p => { p.concepts.dynamic[0].selectedOn = '2026-02-30' },
+    p => { p.concepts.dynamic[0].retainedTradingDays = 0 },
+    p => { p.aShare.selectionScore = 50 },
     p => { p.global.strength = '59' }, p => { p.aShare.risk = 101 },
     p => { p.aShare.completeness = null }, p => { p.global.sourceTimestamps = [] },
-    p => { p.sourceMode.global.gold = 'unknown' }, p => { p.dataStatus.stale = 'false' },
+    p => { p.sourceMode.global.gold = 'unknown' }, p => { p.sourceMode.concepts = 'mx' },
+    p => { p.sourceMode.conceptDiscovery = 'wind' }, p => { p.dataStatus.stale = 'false' },
     p => { p.global.change5d = { strength: 1 } }, p => { p.observedAt = '2026-02-30T10:15:00+08:00' },
     p => { p.scoringVersion = 'next-version' }, p => { p.aShare.stage = '扩张' },
   ]

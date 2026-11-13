@@ -19,9 +19,11 @@ const object = (id, fields = {}) => ({ id, name: id, strength: 63, heat: 78, ris
   completeness: 80, missing: [], contributors: [], sourceTimestamps: [{ source: 'Wind', timestamp: observed }],
   change1d: null, change5d: null, ...fields })
 function view(fields = {}) {
-  return deriveMarketDashboardView({ schemaVersion: 'market-dashboard-v1', scoringVersion: 'market-score-v0.1',
+  return deriveMarketDashboardView({ schemaVersion: 'market-dashboard-v2', scoringVersion: 'market-score-v0.1',
     observedAt: observed, marketDate: '2026-11-13', session: 'intraday', global: object('global'), aShare: object('a-share'),
-    styles: [], industries: [], dataStatus: { completeness: 80, stale: false, missing: [] }, ...fields }, new Date(observed))
+    styles: [], industries: [], concepts: { selectionVersion: 'concept-selection-v0.1',
+      scoringVersion: 'concept-score-v0.1', selectedAt: observed, core: [], dynamic: [] },
+    dataStatus: { completeness: 80, stale: false, missing: [] }, ...fields }, new Date(observed))
 }
 test('score card preserves null, missing evidence and stale/comparison disclosures', async () => {
   const item = view({ global: object('global', { strength: null, completeness: 49, missing: ['成交广度'],

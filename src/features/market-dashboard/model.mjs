@@ -58,6 +58,7 @@ export function rankIndustries(industries) {
   return { strength: [...entries].sort(descending('strength')), heat: [...entries].sort(descending('heat')),
     risk: [...entries].sort(descending('risk')), improvement: [...entries].sort(descending('improvementValue')) }
 }
+export const rankConcepts = rankIndustries
 export function deriveMarketDashboardView(payload, now = new Date(), options = {}) {
   const ctx = context(payload, now, options)
   const present = object => {
@@ -71,6 +72,10 @@ export function deriveMarketDashboardView(payload, now = new Date(), options = {
       comparisonBadges: { change1d: comparisonBadge(object, 'change1d'), change5d: comparisonBadge(object, 'change5d') }, ...improvement(object) }
   }
   const industries = payload.industries.map(present).sort(byId)
+  const coreConcepts = payload.concepts.core.map(present)
+  const dynamicConcepts = payload.concepts.dynamic.map(present)
   return { ...payload, global: present(payload.global), aShare: present(payload.aShare), styles: payload.styles.map(present),
-    industries, freshness: freshness(payload.observedAt, 'intraday', ctx), rankings: rankIndustries(industries) }
+    industries, coreConcepts, dynamicConcepts,
+    conceptRankings: { core: rankConcepts(coreConcepts), dynamic: rankConcepts(dynamicConcepts) },
+    freshness: freshness(payload.observedAt, 'intraday', ctx), rankings: rankIndustries(industries) }
 }
