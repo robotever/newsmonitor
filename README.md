@@ -1,56 +1,41 @@
 # NewsMonitor
 
-面向日常市场研究的实时新闻聚合与全球债务风险看板。
+市场研究首页、全球债务风险和实时财经新闻聚合：[生产页面](https://newsmonitor.pages.dev/)。市场研究面板目前为 **v0.1 / 试运行**，三交易日灰度验收尚未完成。
 
-线上地址：<https://newsmonitor.pages.dev/>
+## 首页功能
 
-## 功能
+- 全局环境、A 股整体、六类风格、35 个 Wind 二级行业，统一展示强度、热度、风险、完整度、时间与贡献因素。
+- 本地 Python 采集 Wind / FRED / 妙想并计算二级指标，经认证 Pages Function 发布到 D1；浏览器只读最新快照及短期历史。供应商原始响应与凭证不上传。
+- 保留全球债务四条主线（美国利率、信用与久期、日本资金、欧洲主权），新闻每 5 分钟刷新，实时快讯聚合成功来源。
+- 缺失不补零；证据不足、滞后、无可比历史和刷新失败均明确披露。风险红色仅表达风险分，缺失为灰色虚线，滞后为灰紫实线。
 
-- 聚合中文财经、国际财经与科技新闻源，每 5 分钟自动刷新。
-- 右侧实时快讯滚动区汇总已成功加载的新闻。
-- “全球债务风险”模块从四条主线观察跨资产环境：
-  - 美国利率结构：2 年、10 年、10 年实际利率、10 年通胀补偿。
-  - 信用与久期压力：美国高收益债 OAS、10 年期限溢价。
-  - 日本资金回流：日本 10 年期国债收益率。
-  - 欧洲主权信用：法德、意德 10 年期国债利差。
+2026-11-13 的首次真实收盘基线含 43 个评分对象，整体完整度 **40%**。这是有效输入权重的覆盖比例（含冷启动折扣），不是数据准确率或收益概率；缺少单位、过期数据与不可用跨资产指标会减少覆盖。低于 70% 提示证据不足，低于 50% 不给阶段结论。详见[运行手册](docs/market-dashboard-operations.md)。
 
-债务模块使用 FRED 公共 CSV。美国序列为日频，日欧长期国债采用月频 OECD/FRED 序列，并在界面中明确标注观测日期。综合状态和阈值属于启发式研究参考，不是经过历史回测的交易信号。
+## 开发与验证
 
-## 技术结构
-
-- Vue 3 + TypeScript + Vite
-- Pinia 状态管理
-- Tailwind CSS 与项目自定义高密度深色样式
-- Cloudflare Pages 静态部署
-- Cloudflare Pages Functions 为外部新闻源和 FRED 提供固定白名单代理
-
-## 本地开发
+技术栈：Vue 3、TypeScript、Vite、Pinia、Tailwind CSS、Cloudflare Pages Functions / D1。
 
 ```bash
 npm ci
 npm run dev
-```
-
-默认地址为 <http://localhost:5173>。
-
-## 测试与构建
-
-```bash
+python3 -m unittest discover -s tools/market_dashboard/tests -v
+python3 '/Users/robot_ever/Codex/Financial Knowledge Repository/scripts/regression_service_reliability.py'
+PYTHONPYCACHEPREFIX=/private/tmp/newsmonitor-python-cache python3 '/Users/robot_ever/Codex/Financial Knowledge Repository/scripts/intake_health_check.py'
 npm test
 npm run build
 ```
 
-单元测试覆盖 FRED CSV 缺失值、乱序数据、部分请求失败、请求超时、欧洲利差计算与综合风险分级。生产构建输出到 `dist/`。
+开发地址为 [localhost:5173](http://localhost:5173)，构建输出 `dist/`。Vite 只提供现有新闻/FRED 代理；研究 API 需 Pages Functions 环境（如 `npx wrangler pages dev dist`）或本地测试中的受控 API 响应。
 
-## 部署
+## 部署与运维
 
-GitHub 仓库：<https://github.com/robotever/newsmonitor>
+仓库：[robotever/newsmonitor](https://github.com/robotever/newsmonitor)。当前发布流程使用 Wrangler；GitHub 的 `main` 也连接 Pages，发布时只能选择一个触发路径，避免重复部署。必须一同保留 `functions/`、`migrations/` 与 `wrangler.toml` 中的 `MARKET_DB` 绑定。
 
-Cloudflare Pages 连接 `main` 分支。推送到 `main` 后由 Cloudflare 自动构建和发布。Pages Functions 位于 `functions/`，因此部署时需保留该目录。
+[运行手册](docs/market-dashboard-operations.md)涵盖持久环境、证书、迁移、轮换、手工运行、诊断、回滚、停用及灰度清单。[macOS 调度说明](ops/macos/README.md)描述安装器的准备、启用和恢复行为。长期服务应指向稳定 checkout；本工作树的 Task 9 不部署、不安装或启用 LaunchAgent。
 
-## 数据与限制
+## 数据限制
 
-- 公共数据源可能变更接口、限流或临时不可用；页面会保留成功指标并标出失败项。
-- 页面不会用模拟数据替代失败的宏观序列。
-- 月频指标用于结构观察，不能当作盘中实时信号。
-- 本项目仅用于研究与信息整理，不构成投资建议。
+- v0.1 权重、分位和阶段阈值是研究假设，尚未历史回测，不构成投资建议。
+- 默认 A 股交易日仅按工作日近似；假日与跨日比较需要经确认的交易日历。
+- 本机离线、供应商额度、字段/单位变化会中断更新；保留最后成功快照，不以模拟值填补或自动混用供应商口径。
+- 全球序列含日频、月频，不能视作全部盘中实时；`sourceMode` 记录选定来源，不保证该来源的每项数据均可用。

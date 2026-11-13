@@ -1,0 +1,10 @@
+name = "newsmonitor"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-11-13"
+
+# Publish credentials are managed through Cloudflare Pages Secrets.
+[[d1_databases]]
+binding = "MARKET_DB"
+database_name = "newsmonitor-market-dashboard"
+database_id = "dabc291a-86b3-46ea-89dd-1060120f5da1"
+migrations_dir = "migrations"

@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 .env
+.wrangler/
+.dev.vars*
+__pycache__/
 
 # Editor directories and files
 .vscode/*

@@ -1,0 +1,194 @@
+{
+  "schemaVersion": "market-dashboard-v1",
+  "scoringVersion": "market-score-v0.1",
+  "normalization": {
+    "winsorLower": 0.05,
+    "winsorUpper": 0.95,
+    "fixedBounds": {
+      "DGS10": {"min": 0, "max": 10}
+    }
+  },
+  "history": {
+    "rollingObservations": 60,
+    "minimumObservations": 20,
+    "coldStartCompletenessMultiplier": 0.85
+  },
+  "families": {
+    "aShare": {
+      "strength": {
+        "breadth": 35,
+        "indexTrend": 25,
+        "volumeConfirmation": 20,
+        "strongStockDiffusion": 20
+      },
+      "heat": {
+        "turnoverPercentile": 30,
+        "turnoverVolumeRatio": 25,
+        "limitUpElasticity": 25,
+        "industryConcentration": 20
+      },
+      "risk": {
+        "breadthDeterioration": 30,
+        "downsideDiffusion": 25,
+        "divergence": 20,
+        "volatility": 15,
+        "globalPressure": 10
+      }
+    },
+    "global": {
+      "strength": {
+        "equityTrend": 25,
+        "ratesLiquidity": 30,
+        "creditConditions": 20,
+        "currencyEnvironment": 15,
+        "commoditySignals": 10
+      },
+      "heat": {
+        "assetVolatility": 30,
+        "vixPercentile": 25,
+        "rateMoves": 20,
+        "commodityMoves": 15,
+        "crossAssetResonance": 10
+      },
+      "risk": {
+        "vixPressure": 25,
+        "highYieldSpread": 25,
+        "realRates": 20,
+        "currencyPressure": 15,
+        "sovereignPressure": 15
+      }
+    },
+    "style": {
+      "strength": {
+        "relativeReturn1d": 25,
+        "relativeReturn5d": 25,
+        "relativeReturn20d": 20,
+        "advancingShare": 15,
+        "mainFlowDirection": 15
+      },
+      "heat": {
+        "turnoverCrossSection": 35,
+        "amountCrossSection": 25,
+        "marketAmountShare": 20,
+        "mainFlowConcentration": 20
+      },
+      "risk": {
+        "negativeBreadth": 25,
+        "trendDeterioration20d": 25,
+        "mainOutflow": 20,
+        "priceVolumeDivergence": 20,
+        "globalRiskTransmission": 10
+      }
+    },
+    "industry": {
+      "strength": {
+        "relativeReturn1d": 20,
+        "relativeReturn5d": 20,
+        "relativeReturn20d": 15,
+        "advancingShare": 30,
+        "mainFlowDirection": 15
+      },
+      "heat": {
+        "turnoverCrossSection": 30,
+        "amountCrossSection": 30,
+        "marketAmountShare": 20,
+        "mainFlowConcentration": 20
+      },
+      "risk": {
+        "decliningShare": 30,
+        "mainOutflow": 25,
+        "mediumTrendDeterioration": 20,
+        "priceVolumeFlowDivergence": 15,
+        "marketRiskTransmission": 10
+      }
+    }
+  },
+  "completeness": {
+    "evidenceThreshold": 70,
+    "stageThreshold": 50
+  },
+  "stages": [
+    {
+      "label": "过热",
+      "conditions": {
+        "strength": {
+          "min": 70
+        },
+        "heat": {
+          "min": 80
+        },
+        "risk": {
+          "min": 60
+        }
+      }
+    },
+    {
+      "label": "退潮",
+      "conditions": {
+        "strength": {
+          "max": 39
+        },
+        "risk": {
+          "min": 70
+        },
+        "strengthSlope": {
+          "max": -5
+        }
+      }
+    },
+    {
+      "label": "冰点",
+      "conditions": {
+        "strength": {
+          "max": 29
+        },
+        "heat": {
+          "max": 39
+        },
+        "risk": {
+          "min": 70
+        },
+        "riskSlope": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "label": "扩张",
+      "conditions": {
+        "strength": {
+          "min": 70
+        },
+        "risk": {
+          "lt": 60
+        }
+      }
+    },
+    {
+      "label": "修复",
+      "conditions": {
+        "strength": {
+          "min": 30,
+          "max": 54
+        },
+        "strengthSlope": {
+          "min": 5
+        },
+        "riskSlope": {
+          "max": -5
+        },
+        "heat": {
+          "lt": 70
+        }
+      }
+    }
+  ],
+  "defaultStage": "震荡",
+  "comparison": {
+    "toleranceMinutes": 20,
+    "lookbacks": [
+      1,
+      5
+    ]
+  }
+}
