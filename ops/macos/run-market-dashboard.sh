@@ -12,10 +12,28 @@ import importlib.util
 import os
 from pathlib import Path
 import re
-import shlex
 import sys
 
 repo, root = (Path(value).resolve() for value in sys.argv[1:3])
+
+def dotenv_value(raw):
+    """Single-line literals: whitespace before # starts an unquoted comment.
+
+    Outer quotes preserve all inner characters, including # and backslashes.
+    Quotes inside unquoted values are literal. No escapes or expansions run.
+    """
+    value = raw.strip()
+    if value.startswith(("'", '"')):
+        end = value.find(value[0], 1)
+        if end < 0:
+            raise ValueError('unterminated dotenv quote')
+        tail = value[end + 1:]
+        if tail.strip() and not (tail[:1].isspace() and tail.lstrip().startswith('#')):
+            raise ValueError('invalid quoted dotenv suffix')
+        return value[1:end]
+    comment = re.search(r'[ \t]+#', raw)
+    return (raw[:comment.start()] if comment else raw).strip()
+
 try:
     env = root / '.env'
     if env.exists():
@@ -29,8 +47,8 @@ try:
             key = key.strip()
             if not separator or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', key):
                 raise ValueError('invalid dotenv assignment')
-            parts = shlex.split(value, comments=True, posix=True)
-            os.environ.setdefault(key, ' '.join(parts))
+            if key not in os.environ:
+                os.environ[key] = dotenv_value(value)
     os.environ['MARKET_DASHBOARD_STATE_ROOT'] = str(root / 'state')
     logs = root / 'logs/market-dashboard'
     logs.mkdir(parents=True, exist_ok=True, mode=0o700)

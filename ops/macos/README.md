@@ -4,6 +4,14 @@ This directory prepares one user LaunchAgent. Preparation does not load or start
 it. No credentials belong in these files or in a plist.
 
 Use a stable checkout, rather than a temporary worktree, for a long-lived job.
+The installer validates that this is the Git checkout root and that its CLI,
+config, wrapper, plist template and the parent log rotation policy are readable,
+before creating files or invoking launchctl. Linked worktrees and paths under
+`.codex/worktrees/` are refused by default for every action. An explicit
+`--allow-worktree` flag overrides this guard, for example `--prepare
+--allow-worktree`; using it for a long-lived service is strongly discouraged
+because removing the worktree breaks its executable paths. The same flag is
+needed to disable or remove a job intentionally created from a worktree.
 From that checkout, set the Financial Knowledge Repository root explicitly when
 the checkout is not its direct `newsmonitor/` child:
 
@@ -33,10 +41,16 @@ configured. Launchd wakes every 300 seconds; the Python job owns Shanghai
 session gating, one successful publication per 15-minute bucket, process locking
 and one final close snapshot in its 15:00–15:30 catch-up window.
 
-The wrapper parses the parent `.env` as literal assignments without executing
-shell expressions or printing values. Existing process variables take
-precedence. Shell variable/command expansion and multiline dotenv values are
-not supported. Wind keeps its existing user configuration; the plist PATH
+The wrapper parses the parent `.env` as single-line literal `KEY=VALUE`
+assignments, optionally prefixed by `export`, without executing shell expressions
+or printing values. Existing process variables take precedence. Single or
+double outer quotes preserve every character inside; backslashes are literal,
+with no escape decoding. In an unquoted value, `#` begins a comment only when
+preceded by whitespace: `synthetic#suffix` stays intact, while `synthetic # note`
+becomes `synthetic`. Internal spaces and unquoted quotes stay literal. A comment
+after a closing outer quote must be separated by whitespace. Shell
+variable/command expansion and multiline values are not supported. Wind keeps
+its existing user configuration; the plist PATH
 includes Homebrew locations. The wrapper exports `MARKET_DASHBOARD_STATE_ROOT`
 as `<project root>/state`, then execs `python -m tools.market_dashboard.job`.
 Logs use the existing project's 2 MB / three-backup copy-truncate policy at each
