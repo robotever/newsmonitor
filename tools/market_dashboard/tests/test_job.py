@@ -19,6 +19,28 @@ NOW = datetime.fromisoformat('2026-11-13T10:15:00+08:00')
 
 
 class ScheduleTests(unittest.TestCase):
+    def test_state_root_override_and_precedence_without_logging_paths(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            fake_module = root / 'project/newsmonitor/tools/market_dashboard/job.py'
+            for explicit, override, expected in [
+                (None, None, root / 'project/state'),
+                (None, str(root / 'env state'), root / 'env state'),
+                (root / 'explicit state', str(root / 'ignored state'), root / 'explicit state'),
+            ]:
+                deps = {'now': NOW.replace(day=14)}
+                if explicit:
+                    deps['state_root'] = explicit
+                with self.subTest(expected=expected), patch.object(job, '__file__', str(fake_module)), patch.dict(job.os.environ, {}, clear=True):
+                    if override:
+                        job.os.environ['MARKET_DASHBOARD_STATE_ROOT'] = override
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        result = job.run_job({}, deps)
+                    self.assertEqual(result.status, 'outside_schedule')
+                    self.assertTrue((expected / 'market-dashboard/job.lock').exists())
+                    self.assertNotIn(str(root), output.getvalue())
+
     def test_shanghai_sessions_lunch_weekends_and_close(self):
         for clock, expected in [('09:29', False), ('09:30', True), ('11:29', True),
                                 ('11:30', False), ('12:00', False), ('13:00', True),

@@ -531,7 +531,8 @@ def run_job(args, deps=None):
         config.setdefault('sources', {})['now'] = now.isoformat()
     except (ValueError, TypeError, OSError, KeyError):
         return JobResult(False, 'configuration', error_code='INVALID_CONFIG')
-    state_root = Path(deps.get('state_root') or Path(__file__).resolve().parents[2].parent / 'state')
+    state_root = Path(deps.get('state_root') or os.environ.get('MARKET_DASHBOARD_STATE_ROOT')
+                      or Path(__file__).resolve().parents[2].parent / 'state')
     state_path = state_root / 'market-dashboard/last-success.json'
     health_path = state_root / 'service-health/market-dashboard.json'
     lock = None
