@@ -14,8 +14,11 @@ export async function onRequestPost({ request, env }) {
   }
   try {
     observed = validatePayload(payload)
-    const futureLimit = new Date(Date.now() + 5 * 60000).toISOString().replace('Z', '000Z')
-    if (observed.utc > futureLimit) return errorResponse('INVALID_PAYLOAD', 400)
+    const futureLimit = Date.now() + 5 * 60000
+    const subMillisecond = Number(observed.utc.slice(-4, -1))
+    if (observed.millis > futureLimit || observed.millis === futureLimit && subMillisecond > 0) {
+      return errorResponse('INVALID_PAYLOAD', 400)
+    }
   } catch { return errorResponse('INVALID_PAYLOAD', 400) }
   try {
     const result = await env.MARKET_DB.prepare(`

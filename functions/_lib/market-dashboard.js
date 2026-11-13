@@ -38,7 +38,10 @@ export function timestamp(value) {
     (offset === 'Z' || Number(offset.slice(1, 3)) < 24 && Number(offset.slice(4)) < 60))
   const millis = Date.parse(value.replace(' ', 'T'))
   requireValid(Number.isFinite(millis))
-  const utc = new Date(millis).toISOString().replace(/\.(\d{3})Z$/, `.$1${fraction.slice(3).padEnd(3, '0')}Z`)
+  const normalized = new Date(millis)
+  // Offsets can move a four-digit input year outside the canonical UTC domain.
+  requireValid(normalized.getUTCFullYear() >= 1 && normalized.getUTCFullYear() <= 9999)
+  const utc = normalized.toISOString().replace(/\.(\d{3})Z$/, `.$1${fraction.slice(3).padEnd(3, '0')}Z`)
   return { millis, utc }
 }
 
@@ -47,7 +50,8 @@ export function validatePayload(payload) {
     'global', 'aShare', 'styles', 'industries', 'dataStatus'], ['sourceMode']))
   requireValid(payload.schemaVersion === SCHEMA_VERSION && payload.scoringVersion === SCORING_VERSION)
   const observed = timestamp(payload.observedAt)
-  requireValid(payload.marketDate === new Date(observed.millis + 8 * 3600000).toISOString().slice(0, 10))
+  requireValid(typeof payload.marketDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(payload.marketDate) &&
+    payload.marketDate === new Date(observed.millis + 8 * 3600000).toISOString().slice(0, 10))
   requireValid(['intraday', 'close'].includes(payload.session))
   requireValid(record(payload.global) && payload.global.id === 'global')
   requireValid(record(payload.aShare) && payload.aShare.id === 'a-share')

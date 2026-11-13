@@ -361,3 +361,71 @@ test('publish accepts a valid body at exactly 256 KiB while rejecting one extra 
   assert.equal((await publish(context(publishRequest(body), db))).status, 201)
   await errorResponse(await publish(context(publishRequest(body + ' '), db)), 413, 'PAYLOAD_TOO_LARGE')
 })
+
+for (const [label, observedAt, marketDate] of [
+  ['upper', '9999-12-31T23:59:59-23:59', '+010000-01'],
+  ['lower', '0001-01-01T00:00:00+23:59', '0000-12-31'],
+]) {
+  test(`publish rejects ${label} UTC year overflow before accessing D1`, async () => {
+    const publish = await handler('publish')
+    let databaseCalls = 0
+    const db = { prepare() { databaseCalls++; throw new Error('database must not be reached') } }
+    const candidate = payload(); candidate.observedAt = observedAt; candidate.marketDate = marketDate
+    await errorResponse(await publish(context(publishRequest(candidate), db)), 400, 'INVALID_PAYLOAD')
+    assert.equal(databaseCalls, 0)
+  })
+}
+
+test('timestamp rejects UTC year overflow even when the input has a legal four-digit year', async () => {
+  const { timestamp } = await import('../functions/_lib/market-dashboard.js')
+  for (const input of ['9999-12-31T23:59:59-23:59', '0001-01-01T00:00:00+23:59']) {
+    assert.throws(() => timestamp(input), /INVALID_PAYLOAD/)
+  }
+})
+
+test('legal year 0001 and 9999 timestamps retain four-digit UTC years and the publication skew gate', async t => {
+  const { timestamp, validatePayload } = await import('../functions/_lib/market-dashboard.js')
+  const publish = await handler('publish'), db = database(t)
+  for (const [observedAt, utc, marketDate] of [
+    ['0001-01-01T23:59:00+23:59', '0001-01-01T00:00:00.000000Z', '0001-01-01'],
+    ['9999-12-30T00:01:00-23:59', '9999-12-31T00:00:00.000000Z', '9999-12-31'],
+  ]) {
+    assert.equal(timestamp(observedAt).utc, utc)
+    const candidate = payload(); candidate.observedAt = observedAt; candidate.marketDate = marketDate
+    assert.equal(validatePayload(candidate).utc, utc)
+    if (marketDate.startsWith('0001')) {
+      assert.equal((await publish(context(publishRequest(candidate), db))).status, 201)
+    } else {
+      await errorResponse(await publish(context(publishRequest(candidate), db)), 400, 'INVALID_PAYLOAD')
+      const now = Date.now
+      Date.now = () => Date.parse('9999-12-30T23:55:00Z')
+      try { assert.equal((await publish(context(publishRequest(candidate), db))).status, 201) }
+      finally { Date.now = now }
+    }
+  }
+})
+
+test('publish rejects a Shanghai market date overflowing year 9999 before accessing D1', async t => {
+  const now = Date.now
+  Date.now = () => Date.parse('9999-12-31T23:00:00Z')
+  t.after(() => { Date.now = now })
+  const publish = await handler('publish')
+  let databaseCalls = 0
+  const db = { prepare() { databaseCalls++; throw new Error('database must not be reached') } }
+  const candidate = payload()
+  candidate.observedAt = '9999-12-31T23:00:00Z'
+  candidate.marketDate = '+010000-01'
+  await errorResponse(await publish(context(publishRequest(candidate), db)), 400, 'INVALID_PAYLOAD')
+  assert.equal(databaseCalls, 0)
+})
+
+test('publish accepts a valid year 9999 observation when the future limit crosses year 10000', async t => {
+  const publish = await handler('publish'), db = database(t)
+  const now = Date.now
+  Date.now = () => Date.parse('9999-12-31T23:58:00Z')
+  t.after(() => { Date.now = now })
+  const candidate = payload()
+  candidate.observedAt = '9999-12-31T15:59:59.999999Z'
+  candidate.marketDate = '9999-12-31'
+  assert.equal((await publish(context(publishRequest(candidate), db))).status, 201)
+})
