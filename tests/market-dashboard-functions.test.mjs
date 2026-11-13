@@ -52,7 +52,12 @@ test('migration creates all snapshot columns, unique observations and latest ind
     db.execute(`PRAGMA index_info('${index.name}')`).results.map(row => row.name).join(',') === 'observed_at,scoring_version'))
   const configuration = readFileSync(new URL('../wrangler.toml', import.meta.url), 'utf8')
   assert.match(configuration, /^pages_build_output_dir\s*=\s*"dist"/m)
-  assert.doesNotMatch(configuration, /^\s*(database_id|account_id)\s*=/m)
+  assert.match(configuration, /^\[\[d1_databases\]\]/m)
+  assert.match(configuration, /^binding\s*=\s*"MARKET_DB"/m)
+  assert.match(configuration, /^database_name\s*=\s*"newsmonitor-market-dashboard"/m)
+  assert.match(configuration, /^database_id\s*=\s*"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"\s*$/m)
+  assert.doesNotMatch(configuration, /^\s*(?:account_id|[\w-]*(?:token|secret|api[_-]?key)[\w-]*)\s*=/im)
+  assert.doesNotMatch(configuration, /<provisioned-database-id>|database_id\s*=\s*"(?:0{8}-0{4}-0{4}-0{4}-0{12}|[^"\n]*(?:placeholder|replace|example)[^"\n]*)"/i)
 })
 
 const TOKEN = 'synthetic-publish-sentinel'
