@@ -141,6 +141,39 @@ class SourceTests(unittest.TestCase):
         self.assertEqual(calls[0][0][1:5], ["scripts/cli.mjs", "call", "index_data", "get_index_price_indicators"])
         self.assertEqual(len(json.loads(calls[0][0][-1])["windcode"].split(",")), 6)
 
+    def test_industries_use_one_specialized_price_batch_and_preserve_returned_units(self):
+        data = fixture("wind-industries.json")
+        inner = json.loads(data["content"][0]["text"])
+        table = inner['data']['data'][0]
+        aliases = {'最新涨跌幅(%)': '涨跌幅', '最新换手率(%)': '换手率',
+                   '最新成交额(亿元)': '成交额', '最新主力净流入额(亿元)': '当日主力净流入额',
+                   '日期': '最新交易日', '证券简称': '中文简称'}
+        for column in table['columns']:
+            column['name'] = aliases.get(column['name'], column['name'])
+        data['content'][0]['text'] = json.dumps({'data': table})
+        calls = []
+        def runner(argv, **kwargs):
+            calls.append(argv)
+            return data
+        batch = sources.collect_wind_industries(runner, {})
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][2:5], ['call', 'index_data', 'get_index_price_indicators'])
+        params = json.loads(calls[0][-1])
+        self.assertEqual(params['windcode'].split(','), [code for code, _ in sources.INDUSTRY_DEFINITIONS])
+        self.assertEqual(params['indexes'], '最新交易日,交易时间,中文简称,涨跌幅,成交额,换手率,5日涨跌幅,20日涨跌幅,当日主力净流入额,上涨家数,下跌家数')
+        self.assertEqual(len(batch.rows), 35)
+        self.assertEqual(batch.rows[0]['最新成交额(亿元)'], table['rows'][0][4])
+        self.assertEqual(batch.rows[0]['_units']['最新成交额(亿元)'], '亿元')
+        self.assertEqual(batch.rows[0]['_timestamp'], '2026-11-13T10:15:00+08:00')
+
+    def test_legacy_industry_analytics_requires_explicit_configuration(self):
+        calls = []
+        def runner(argv, **kwargs):
+            calls.append(argv)
+            return fixture('wind-industries.json')
+        sources.collect_wind_industries(runner, {'sources': {'wind': {'industryMode': 'analytics'}}})
+        self.assertEqual(calls[0][2:5], ['call', 'analytics_data', 'get_financial_data'])
+
 
 class GlobalSourceTests(unittest.TestCase):
     def config(self, metrics):
@@ -247,7 +280,7 @@ class GlobalSourceTests(unittest.TestCase):
             if argv[0] != "node":
                 return fixture("mx-global.json")
             params = json.loads(argv[-1])
-            name = "wind-industries.json" if "question" in params else "wind-breadth.json" if params["windcode"] == "881001.WI" else "wind-styles.json"
+            name = "wind-industries.json" if "question" in params or params.get("windcode", "").startswith("882") else "wind-breadth.json" if params["windcode"] == "881001.WI" else "wind-styles.json"
             return fixture(name)
         config = self.config({"rates": {"source": "fred", "series": "DGS10", "frequency": "daily", "unit": "%"}})
         output = io.StringIO()

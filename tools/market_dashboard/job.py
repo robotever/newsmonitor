@@ -212,7 +212,8 @@ def publish_payload(payload, url, token, timeout=20, *, config=None):
         if not valid_target or not valid_auth or not _numeric(timeout, .001, 300):
             return PublishResult(False, error_code='INVALID_PUBLISH_CONFIG')
         request = Request(url, data=json.dumps(payload, allow_nan=False, separators=(',', ':')).encode(),
-                          headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}, method='POST')
+                          headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json',
+                                   'User-Agent': 'NewsmonitorMarketDashboard/1.0'}, method='POST')
     except (TypeError, ValueError):
         return PublishResult(False, error_code='INVALID_PUBLISH_CONFIG')
     for attempt in range(1, 4):
@@ -256,7 +257,7 @@ def collect_batches(config, *, fixture=False, runner=None, fetcher=None):
                 name = 'mx-global.json'
             else:
                 params = json.loads(argv[-1])
-                name = ('wind-industries.json' if 'question' in params else
+                name = ('wind-industries.json' if 'question' in params or params.get('windcode', '').startswith('882') else
                         'wind-breadth.json' if params['windcode'] == '881001.WI' else 'wind-styles.json')
             return json.loads((FIXTURES / name).read_text())
         def fetcher(url):
@@ -296,8 +297,9 @@ def _fresh(row, now):
     except ValidationError:
         return False
     age = now - timestamp
-    if _local(now).hour >= 15 and (_local(timestamp).date() != _local(now).date() or _local(timestamp).hour < 15):
-        return False
+    if _local(now).hour >= 15:
+        return (age >= timedelta(0) and _local(timestamp).date() == _local(now).date()
+                and _local(timestamp).hour >= 15)
     return timedelta(0) <= age <= timedelta(minutes=30)
 
 

@@ -29,6 +29,8 @@ INDUSTRY_DEFINITIONS = tuple((f'882{code}.WI', name) for code, name in zip(_INDU
 BREADTH_FIELDS = ('最新交易日', '交易时间', '中文简称', '涨跌幅', '成交额', '换手率', '上涨家数', '下跌家数', '平盘家数')
 STYLE_FIELDS = ('最新交易日', '交易时间', '中文简称', '涨跌幅', '成交额', '换手率', '5日涨跌幅', '20日涨跌幅', '当日主力净流入额')
 INDUSTRY_FIELDS = ('最新涨跌幅(%)', '最新换手率(%)', '最新成交额(亿元)', '最新主力净流入额(亿元)', '上涨家数', '下跌家数', '5日涨跌幅', '20日涨跌幅')
+INDUSTRY_PRICE_FIELDS = ('最新交易日', '交易时间', '中文简称', '涨跌幅', '成交额', '换手率',
+                         '5日涨跌幅', '20日涨跌幅', '当日主力净流入额', '上涨家数', '下跌家数')
 
 
 @dataclass(frozen=True)
@@ -205,7 +207,20 @@ def collect_wind_styles(runner, config):
 
 
 def collect_wind_industries(runner, config):
-    return _wind(runner, config, 'industries', INDUSTRY_DEFINITIONS, INDUSTRY_FIELDS, analytics=True)
+    legacy = config.get('sources', {}).get('wind', {}).get('industryMode') == 'analytics'
+    batch = _wind(runner, config, 'industries', INDUSTRY_DEFINITIONS,
+                  INDUSTRY_FIELDS if legacy else INDUSTRY_PRICE_FIELDS, analytics=legacy)
+    # Keep the scorer's established keys without changing returned values or
+    # inventing units. _money still checks the copied provider unit explicitly.
+    aliases = {'涨跌幅': '最新涨跌幅(%)', '换手率': '最新换手率(%)',
+               '成交额': '最新成交额(亿元)', '当日主力净流入额': '最新主力净流入额(亿元)'}
+    for row in batch.rows:
+        for field, alias in aliases.items():
+            if field in row:
+                row[alias] = row[field]
+                if field in row['_units']:
+                    row['_units'][alias] = row['_units'][field]
+    return batch
 
 
 # Reuses all ten series IDs/frequencies in src/features/debt-monitor/api.mjs.

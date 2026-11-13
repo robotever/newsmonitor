@@ -102,6 +102,7 @@ class PublishTests(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertEqual(requests[0][0].get_header('Authorization'), 'Bearer private-token')
         self.assertEqual(requests[0][0].get_header('Content-type'), 'application/json')
+        self.assertEqual(requests[0][0].get_header('User-agent'), 'NewsmonitorMarketDashboard/1.0')
         self.assertEqual(requests[0][1], 8)
         self.assertEqual(json.loads(requests[0][0].data)['styles'][0]['id'], '000300.SH')
         self.assertNotIn('private-token', repr(result))
@@ -460,3 +461,27 @@ class JobTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+class CloseFreshnessTests(unittest.TestCase):
+    def test_final_close_remains_fresh_during_afternoon_and_evening(self):
+        row = {'_timestamp': '2026-11-13T15:00:03+08:00'}
+        for clock in ('2026-11-13T15:30:04+08:00', '2026-11-13T17:45:00+08:00',
+                      '2026-11-13T23:59:59+08:00', '2026-11-13T15:59:59Z'):
+            with self.subTest(clock=clock):
+                self.assertTrue(job._fresh(row, datetime.fromisoformat(clock)))
+
+    def test_final_close_expires_at_next_shanghai_date_and_rejects_future(self):
+        row = {'_timestamp': '2026-11-13T15:00:03+08:00'}
+        for clock in ('2026-11-14T00:00:00+08:00', '2026-11-13T16:00:00Z',
+                      '2026-11-13T15:00:02+08:00'):
+            with self.subTest(clock=clock):
+                self.assertFalse(job._fresh(row, datetime.fromisoformat(clock)))
+
+    def test_close_does_not_promote_preclose_or_previous_day_quotes(self):
+        now = datetime.fromisoformat('2026-11-13T16:00:00+08:00')
+        for clock in ('2026-11-13T14:59:59+08:00', '2026-11-12T15:00:03+08:00'):
+            with self.subTest(clock=clock):
+                self.assertFalse(job._fresh({'_timestamp': clock}, now))
+        intraday = datetime.fromisoformat('2026-11-13T14:59:00+08:00')
+        self.assertTrue(job._fresh({'_timestamp': '2026-11-13T14:29:00+08:00'}, intraday))
+        self.assertFalse(job._fresh({'_timestamp': '2026-11-13T14:28:59+08:00'}, intraday))
