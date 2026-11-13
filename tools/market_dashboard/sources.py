@@ -68,7 +68,10 @@ def _decode(value):
         raise SourceError()
     if value.get('ok') is False or value.get('isError') is True or value.get('error'):
         allowed = {'AUTH_ERROR', 'RATE_LIMIT_ERROR', 'backend_error', 'NETWORK_ERROR', 'TOOL_RUNTIME_ERROR'}
-        raise SourceError(value.get('code') if value.get('code') in allowed else 'backend_error')
+        code = value.get('code')
+        if code is not None and not isinstance(code, str):
+            raise SourceError()
+        raise SourceError(code if code in allowed else 'backend_error')
     return value
 
 
@@ -182,7 +185,9 @@ def _wind(runner, config, group, definitions, fields, *, analytics=False):
     for code, name in definitions:
         row = dict(by_code[code])
         row.update(id=code, name=name, source='Wind', sourceMode='wind')
-        missing = [key for key in fields if row.get(key) is None]
+        # Missing provider markers retain their original text but never count
+        # as observed values in the batch's completeness signal.
+        missing = [key for key in fields if row.get(key) in (None, '', '.')]
         if not row['_timestamp']:
             missing.append('timestamp')
         if missing:
@@ -332,13 +337,19 @@ def _mx_payload(runner, config, definitions):
             return _decode(files[0].read_text())
 
 
-def _mx_points(payload, definition):
-    payload = _decode(payload)
-    if payload.get('status') not in (None, 0, '0') or payload.get('code') not in (None, 0, '0', 200, '200'):
+def _mx_envelope(value):
+    value = _decode(value)
+    if value.get('status') not in (None, 0, '0') or value.get('code') not in (None, 0, '0', 200, '200'):
         raise SourceError('backend_error')
-    data = payload.get('data')
-    if isinstance(data, dict) and isinstance(data.get('data'), dict):
-        data = data['data'].get('searchDataResultDTO')
+    return value
+
+
+def _mx_points(payload, definition):
+    payload = _mx_envelope(payload)
+    data = _mx_envelope(payload.get('data'))
+    if isinstance(data.get('data'), dict):
+        inner = _mx_envelope(data['data'])
+        data = _mx_envelope(inner.get('searchDataResultDTO'))
     blocks = data.get('dataTableDTOList') if isinstance(data, dict) else None
     if not isinstance(blocks, list):
         raise SourceError()

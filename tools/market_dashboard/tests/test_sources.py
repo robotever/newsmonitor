@@ -26,6 +26,27 @@ class SourceTests(unittest.TestCase):
         self.assertIsNone(rows[0]["平盘家数"])
         self.assertEqual(rows[0]["_timestamp"], "2026-11-13T10:15:00+08:00")
 
+    def test_wind_numeric_missing_markers_preserve_text_but_reduce_completeness(self):
+        for marker in (".", ""):
+            with self.subTest(marker=marker):
+                envelope = fixture("wind-styles.json")
+                inner = json.loads(envelope["content"][0]["text"])
+                inner["data"]["rows"][0][3] = marker
+                envelope["content"][0]["text"] = json.dumps(inner)
+                batch = sources.collect_wind_styles(lambda *a, **k: envelope, {})
+                self.assertFalse(batch.complete)
+                self.assertEqual(batch.rows[0]["涨跌幅"], marker)
+                self.assertEqual(batch.errors[0]["code"], "MISSING_FIELDS")
+                self.assertIn("涨跌幅", batch.errors[0]["fields"])
+
+    def test_malformed_error_codes_return_an_unavailable_batch(self):
+        for response in ({"ok": False, "code": []}, {"isError": True, "code": {}}):
+            with self.subTest(response=response):
+                batch = sources.collect_wind_styles(lambda *a, **k: response, {})
+                self.assertFalse(batch.complete)
+                self.assertEqual(batch.rows, [])
+                self.assertEqual(batch.errors[0]["code"], "MALFORMED_RESPONSE")
+
     def test_nonzero_cli_error_preserves_safe_error_code(self):
         response = subprocess.CompletedProcess([], 1, '{"ok":false,"code":"AUTH_ERROR","message":"secret"}', 'secret')
         batch = sources.collect_wind_styles(lambda *a, **k: response, {})
@@ -151,6 +172,26 @@ class GlobalSourceTests(unittest.TestCase):
             self.config({"monthly": config["sources"]["global"]["metrics"]["monthly"]}))
         self.assertFalse(batch.complete)
         self.assertTrue(batch.rows[0]["stale"])
+
+    def test_mx_nested_error_envelopes_never_accept_accompanying_data(self):
+        for layer in ("data", "inner", "result"):
+            for error_fields in ({"error": "backend failure", "code": "AUTH_ERROR"},
+                                 {"code": "AUTH_ERROR"}, {"status": 113}):
+                with self.subTest(layer=layer, error_fields=error_fields):
+                    payload = fixture("mx-global.json")
+                    nested = payload["data"]
+                    if layer in ("inner", "result"):
+                        nested = nested["data"]
+                    if layer == "result":
+                        nested = nested["searchDataResultDTO"]
+                    nested.update(error_fields)
+                    batch = sources.collect_global_inputs(lambda *a, **k: payload, None, self.config({
+                        "gold": {"source": "mx", "entityName": "现货黄金", "field": "最新价", "frequency": "daily"}}))
+                    self.assertFalse(batch.complete)
+                    self.assertFalse(batch.rows[0]["available"])
+                    self.assertIsNone(batch.rows[0]["value"])
+                    self.assertEqual(batch.rows[0]["history"], [])
+                    self.assertNotIn("backend failure", str(batch))
 
     def test_mx_partial_cross_asset_data_keeps_missing_metric_unavailable(self):
         config = self.config({
