@@ -1,7 +1,7 @@
 """Local collection and publication of derived market dashboard snapshots."""
 from copy import deepcopy
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from urllib.error import HTTPError, URLError
@@ -17,7 +17,9 @@ import re
 import time
 
 from . import sources
-from .scoring import load_config, build_dashboard_payload, score_family
+from .concepts import (build_concept_payload, core_concept_ids,
+                       load_concept_config)
+from .scoring import load_config, build_dashboard_payload, percentile_rank, score_family
 from .sources import STYLE_DEFINITIONS, INDUSTRY_DEFINITIONS
 
 
@@ -99,7 +101,7 @@ def validate_payload(payload, config=None):
     config = config or load_config()
     _require(isinstance(payload, dict))
     required = {'schemaVersion', 'scoringVersion', 'observedAt', 'marketDate', 'session',
-                'global', 'aShare', 'styles', 'industries', 'dataStatus'}
+                'global', 'aShare', 'styles', 'industries', 'concepts', 'dataStatus'}
     _require(required <= payload.keys() and payload.keys() <= required | {'sourceMode'})
     _require(payload['schemaVersion'] == config['schemaVersion']
              and payload['scoringVersion'] == config['scoringVersion'])
@@ -119,10 +121,40 @@ def validate_payload(payload, config=None):
         _require(all(isinstance(id, str) for id in ids) and len(set(ids)) == len(ids)
                  and set(ids) == {id for id, _ in definitions})
         objects.extend(items)
+    concepts = payload['concepts']
+    _require(isinstance(concepts, dict)
+             and set(concepts) == {'selectionVersion', 'scoringVersion', 'selectedAt', 'core', 'dynamic'})
+    _require(concepts['selectionVersion'] == config['conceptSelection']['version']
+             and concepts['scoringVersion'] == config['conceptSelection']['scoringVersion'])
+    _timestamp(concepts['selectedAt'])
+    core, dynamic = concepts['core'], concepts['dynamic']
+    _require(isinstance(core, list) and len(core) == 25
+             and isinstance(dynamic, list) and len(dynamic) == 10
+             and all(isinstance(item, dict) for item in core + dynamic))
+    core_ids = [item.get('id') for item in core]
+    dynamic_ids = [item.get('id') for item in dynamic]
+    _require(all(isinstance(object_id, str) and re.fullmatch(r'884\d{2,4}\.WI', object_id)
+                 for object_id in core_ids + dynamic_ids)
+             and len(set(core_ids)) == 25 and len(set(dynamic_ids)) == 10
+             and not set(core_ids) & set(dynamic_ids))
+    for item in core:
+        _require(not ({'selectionScore', 'selectedOn', 'retainedTradingDays'} & item.keys()))
+    for item in dynamic:
+        _require(_numeric(item.get('selectionScore'))
+                 and isinstance(item.get('selectedOn'), str)
+                 and isinstance(item.get('retainedTradingDays'), int)
+                 and not isinstance(item.get('retainedTradingDays'), bool)
+                 and item['retainedTradingDays'] >= 1)
+        try:
+            date.fromisoformat(item['selectedOn'])
+        except ValueError:
+            raise ValidationError('INVALID_PAYLOAD') from None
+    objects.extend(core + dynamic)
     required_obj = {'id', 'strength', 'heat', 'risk', 'completeness', 'missing',
                     'contributors', 'sourceTimestamps', 'change1d', 'change5d'}
     allowed_obj = required_obj | {'name', 'frequency', 'observedAt', 'stage',
-                                  'comparisonFallback', 'comparisonUnavailable'}
+                                  'comparisonFallback', 'comparisonUnavailable',
+                                  'selectionScore', 'selectedOn', 'retainedTradingDays'}
     for obj in objects:
         _require(required_obj <= obj.keys() and obj.keys() <= allowed_obj)
         _require(_numeric(obj['completeness']) and _strings(obj['missing']))
@@ -175,11 +207,14 @@ def validate_payload(payload, config=None):
     _require(_numeric(minimum) and status['completeness'] > 0 and status['completeness'] >= minimum)
     if 'sourceMode' in payload:
         modes = payload['sourceMode']
-        _require(isinstance(modes, dict) and set(modes) == {'breadth', 'styles', 'industries', 'global'})
+        _require(isinstance(modes, dict) and set(modes) == {
+            'breadth', 'styles', 'industries', 'concepts', 'conceptDiscovery', 'global'})
         for group, mode in modes.items():
             if group == 'global':
                 _require(isinstance(mode, dict) and all(isinstance(key, str) and key.isalnum()
                          and value in ('fred', 'wind', 'mx') for key, value in mode.items()))
+            elif group == 'conceptDiscovery':
+                _require(mode == 'mx')
             else:
                 _require(mode == 'wind')
     # Catch NaN, unserializable objects and excessive derived bodies before transport.
@@ -243,7 +278,7 @@ FIXTURES = Path(__file__).with_name('fixtures')
 FIXTURE_NOW = datetime.fromisoformat('2026-11-13T10:15:00+08:00')
 
 
-def collect_batches(config, *, fixture=False, runner=None, fetcher=None):
+def collect_batches(config, *, concept_config=None, fixture=False, runner=None, fetcher=None):
     """Serial adapter calls; fixture mode replaces I/O, never production failures."""
     config = deepcopy(config)
     if fixture:
@@ -257,16 +292,33 @@ def collect_batches(config, *, fixture=False, runner=None, fetcher=None):
                 name = 'mx-global.json'
             else:
                 params = json.loads(argv[-1])
-                name = ('wind-industries.json' if 'question' in params or params.get('windcode', '').startswith('882') else
-                        'wind-breadth.json' if params['windcode'] == '881001.WI' else 'wind-styles.json')
-            return json.loads((FIXTURES / name).read_text())
+                windcodes = params.get('windcode', '')
+                name = ('wind-industries.json' if 'question' in params or windcodes.startswith('882') else
+                        'wind-breadth.json' if windcodes == '881001.WI' else
+                        'wind-concepts.json' if windcodes.startswith('884') else 'wind-styles.json')
+            envelope = json.loads((FIXTURES / name).read_text())
+            if name == 'wind-concepts.json':
+                requested = set(params['windcode'].split(','))
+                content = json.loads(envelope['content'][0]['text'])
+                table = content['data']
+                code_index = next(index for index, column in enumerate(table['columns'])
+                                  if column['name'] == 'Wind代码')
+                time_index = next(index for index, column in enumerate(table['columns'])
+                                  if column['name'] == '交易时间')
+                table['rows'] = [row for row in table['rows'] if row[code_index] in requested]
+                for row in table['rows']:
+                    row[time_index] = FIXTURE_NOW.isoformat()
+                envelope['content'][0]['text'] = json.dumps(content, ensure_ascii=False)
+            return envelope
         def fetcher(url):
             return (FIXTURES / 'fred-series.csv').read_text()
     runner = runner or sources.run_command
     fetcher = fetcher or sources.fetch_csv
+    concept_config = concept_config or load_concept_config()
     return {'breadth': sources.collect_wind_breadth(runner, config),
             'styles': sources.collect_wind_styles(runner, config),
             'industries': sources.collect_wind_industries(runner, config),
+            'concepts': sources.collect_wind_concepts(runner, config, concept_config),
             'global': sources.collect_global_inputs(runner, fetcher, config)}
 
 
@@ -325,6 +377,104 @@ def _breadth(row):
     return values[0] / sum(values) * 100, values[1] / sum(values) * 100
 
 
+def derive_concept_candidates(batch, market_amount, market_risk, now, config):
+    """Convert the full Wind concept batch into comparable derived candidates.
+
+    All ranks are calculated against the same fresh candidate universe.  Raw
+    provider fields are never exposed, and missing observations remain missing
+    rather than being coerced to neutral values.
+    """
+    rows = batch.rows
+    by_id = {row.get('id'): row for row in rows if isinstance(row.get('id'), str)}
+
+    def metrics(row):
+        amount = _money(row, '成交额')
+        flow = _money(row, '当日主力净流入额')
+        advancing, declining = _breadth(row)
+        return {
+            'relativeReturn1d': _value(row, '涨跌幅'),
+            'relativeReturn5d': _value(row, '5日涨跌幅'),
+            'relativeReturn20d': _value(row, '20日涨跌幅'),
+            'turnoverCrossSection': _value(row, '换手率'),
+            'amountCrossSection': amount,
+            'marketAmountShare': _ratio(amount, market_amount),
+            'mainFlowDirection': _ratio(flow, amount),
+            'advancingShare': advancing,
+            'decliningShare': declining,
+        }
+
+    values = {row['id']: metrics(row) for row in rows if row.get('id') in by_id}
+    ranked_keys = ('relativeReturn1d', 'relativeReturn5d', 'relativeReturn20d',
+                   'turnoverCrossSection', 'amountCrossSection', 'marketAmountShare',
+                   'mainFlowDirection')
+    histories = {
+        key: [metric[key] for object_id, metric in values.items()
+              if _fresh(by_id[object_id], now) and metric[key] is not None]
+        for key in ranked_keys
+    }
+    acceleration_values = {
+        object_id: (metric['relativeReturn1d'] - metric['relativeReturn5d'] / 5
+                    if metric['relativeReturn1d'] is not None
+                    and metric['relativeReturn5d'] is not None else None)
+        for object_id, metric in values.items()
+    }
+    acceleration_history = [value for object_id, value in acceleration_values.items()
+                            if _fresh(by_id[object_id], now) and value is not None]
+
+    candidates = []
+    for row in rows:
+        object_id = row.get('id')
+        if object_id not in values:
+            continue
+        metric = values[object_id]
+        indicators = {key: _cross(row, metric[key], histories[key], now) for key in ranked_keys}
+        indicators['advancingShare'] = _component(row, metric['advancingShare'], now)
+        indicators['decliningShare'] = _component(row, metric['decliningShare'], now)
+
+        flow = metric['mainFlowDirection']
+        indicators['mainOutflow'] = _cross(row, flow, histories['mainFlowDirection'], now)
+        indicators['mainOutflow']['reverse'] = True
+        indicators['mainFlowConcentration'] = _cross(
+            row, abs(flow) if flow is not None else None,
+            [abs(value) for value in histories['mainFlowDirection']], now)
+        indicators['mediumTrendDeterioration'] = _cross(
+            row, metric['relativeReturn20d'], histories['relativeReturn20d'], now)
+        indicators['mediumTrendDeterioration']['reverse'] = True
+        indicators['momentumAcceleration'] = _cross(
+            row, acceleration_values[object_id], acceleration_history, now)
+
+        return_rank = percentile_rank(histories['relativeReturn1d'], metric['relativeReturn1d'], config)
+        flow_rank = percentile_rank(histories['mainFlowDirection'], flow, config)
+        divergence = (abs(return_rank - flow_rank)
+                      if return_rank is not None and flow_rank is not None else None)
+        indicators['priceVolumeFlowDivergence'] = _component(row, divergence, now)
+        if market_risk is not None:
+            indicators['marketRiskTransmission'] = {
+                'value': market_risk, 'available': _fresh(row, now),
+                'stale': not _fresh(row, now), 'source': 'Derived',
+                'timestamp': now.isoformat(),
+            }
+
+        component_inputs = {
+            'momentum': percentile_rank(histories['relativeReturn5d'], metric['relativeReturn5d'], config),
+            'flow': flow_rank,
+            'breadth': metric['advancingShare'],
+            'activity': percentile_rank(histories['turnoverCrossSection'], metric['turnoverCrossSection'], config),
+        }
+        weights = config['conceptSelection']['weights']
+        observed_weight = sum(weights[key] for key, value in component_inputs.items()
+                              if value is not None)
+        selection_completeness = observed_weight / sum(weights.values()) * 100
+        candidates.append({
+            'id': object_id, 'name': row.get('name', object_id),
+            'frequency': 'intraday', 'indicators': indicators,
+            'selectionComponents': component_inputs,
+            'selectionCompleteness': selection_completeness,
+            'relativeReturn5dRaw': metric['relativeReturn5d'],
+        })
+    return candidates
+
+
 def _global_components(rows, now, config):
     """Use only supported observations; no guessed bounds or synthetic histories.
 
@@ -373,7 +523,7 @@ def _global_components(rows, now, config):
     return indicators
 
 
-def derive_inputs(batches, now, config):
+def derive_inputs(batches, now, config, concept_config=None):
     """Derive interpretable component inputs from unit-checked adapter rows.
 
     Return/flow/turnover ranks compare fresh peers in the same source batch.
@@ -460,7 +610,61 @@ def derive_inputs(batches, now, config):
                     'source': 'Derived', 'timestamp': now.isoformat()}
             objects.append({'id': id, 'name': name, 'frequency': 'intraday', 'indicators': indicators})
         output[group] = objects
+    if batches.get('concepts') and batches['concepts'].rows:
+        concept_config = concept_config or load_concept_config()
+        core = core_concept_ids(concept_config)
+        core_order = {object_id: index for index, object_id in enumerate(core)}
+        candidates = derive_concept_candidates(
+            batches['concepts'], market_amount, market_risk, now, config)
+        for candidate in candidates:
+            candidate['core'] = candidate['id'] in core_order
+            candidate['coreOrder'] = core_order.get(candidate['id'])
+        output['conceptCandidates'] = candidates
     return output
+
+
+def _concept_previous(history):
+    for snapshot in reversed(history or []):
+        concepts = snapshot.get('concepts') if isinstance(snapshot, dict) else None
+        if isinstance(concepts, dict) and isinstance(concepts.get('dynamic'), list):
+            return concepts['dynamic']
+    return []
+
+
+def _latest_concept_block(history):
+    for snapshot in reversed(history or []):
+        concepts = snapshot.get('concepts') if isinstance(snapshot, dict) else None
+        if isinstance(concepts, dict) and isinstance(concepts.get('dynamic'), list):
+            return concepts
+    return None
+
+
+def _concept_comparisons(concepts):
+    for item in [*concepts['core'], *concepts['dynamic']]:
+        item.setdefault('change1d', None)
+        item.setdefault('change5d', None)
+
+
+def build_market_payload(inputs, previous, config):
+    payload = build_dashboard_payload(inputs, previous, config)
+    candidates = inputs.get('conceptCandidates')
+    if not candidates:
+        raise ValueError('CONCEPTS_UNAVAILABLE')
+    prior_block = _latest_concept_block(previous)
+    reuse = inputs['session'] == 'intraday' and prior_block is not None
+    payload['concepts'] = build_concept_payload(
+        candidates, _concept_previous(previous), inputs['marketDate'],
+        prior_block['selectedAt'] if reuse else inputs['observedAt'], config,
+        reuse_previous=reuse)
+    _concept_comparisons(payload['concepts'])
+    objects = [payload['global'], payload['aShare'], *payload['styles'],
+               *payload['industries'], *payload['concepts']['core'],
+               *payload['concepts']['dynamic']]
+    payload['dataStatus']['completeness'] = math.floor(
+        sum(item['completeness'] for item in objects) / len(objects) + .5)
+    payload['dataStatus']['missing'] = [
+        f"{item.get('id', 'unknown')}:{key}" for item in objects for key in item['missing']]
+    return payload
 
 
 
@@ -500,6 +704,7 @@ def _write_json(path, value):
 
 def _source_modes(batches):
     return {'breadth': 'wind', 'styles': 'wind', 'industries': 'wind',
+            'concepts': 'wind', 'conceptDiscovery': 'mx',
             'global': {row['id']: row['sourceMode'] for row in batches['global'].rows
                        if isinstance(row.get('id'), str) and row['id'].isalnum()
                        and row.get('sourceMode') in ('fred', 'wind', 'mx')}}
@@ -530,6 +735,7 @@ def run_job(args, deps=None):
     try:
         _local(now)
         config = deepcopy(deps.get('config') or load_config(arg('config')))
+        concept_config = deepcopy(deps.get('concept_config') or load_concept_config())
         config.setdefault('sources', {})['now'] = now.isoformat()
     except (ValueError, TypeError, OSError, KeyError):
         return JobResult(False, 'configuration', error_code='INVALID_CONFIG')
@@ -555,7 +761,7 @@ def run_job(args, deps=None):
         if last_status not in ('published', 'failed', 'never', 'skipped'):
             last_status = 'never'
         counts = old_health.get('sourceCounts', {})
-        counts = {key: value for key, value in counts.items() if key in ('breadth', 'global', 'styles', 'industries')
+        counts = {key: value for key, value in counts.items() if key in ('breadth', 'global', 'styles', 'industries', 'concepts')
                   and isinstance(value, int) and 0 <= value <= 1000} if isinstance(counts, dict) else {}
         prior_payload = state.get('payload', {})
         completeness = prior_payload.get('dataStatus', {}).get('completeness') if isinstance(prior_payload, dict) else None
@@ -567,6 +773,11 @@ def run_job(args, deps=None):
         stage = 'collect'
         batches = deps['collector'](config) if 'collector' in deps else collect_batches(config, fixture=fixture)
         counts = {group: len(batch.rows) for group, batch in batches.items()}
+        concept_available = bool(batches.get('concepts') and batches['concepts'].rows)
+        prior_payload = state.get('payload', {})
+        prior_concepts = prior_payload.get('concepts') if isinstance(prior_payload, dict) else None
+        if not concept_available and prior_concepts is None:
+            raise sources.SourceError('CONCEPTS_UNAVAILABLE')
         # Evaluate freshness at completion, so observations arriving during the
         # serial provider calls are not incorrectly classified as future data.
         if callable(deps.get('now')):
@@ -575,10 +786,26 @@ def run_job(args, deps=None):
             now = datetime.now(timezone.utc)
         _local(now)
         stage = 'score'
-        inputs = derive_inputs(batches, now, config)
+        inputs = derive_inputs(batches, now, config, concept_config)
         previous = state.get('history', [])
         previous = previous if isinstance(previous, list) else []
-        payload = deps.get('builder', build_dashboard_payload)(inputs, previous, config)
+        if 'builder' in deps:
+            payload = deps['builder'](inputs, previous, config)
+        elif concept_available:
+            payload = build_market_payload(inputs, previous, config)
+        else:
+            validate_payload(prior_payload, config)
+            payload = build_dashboard_payload(inputs, previous, config)
+            payload['concepts'] = deepcopy(prior_concepts)
+            objects = [payload['global'], payload['aShare'], *payload['styles'],
+                       *payload['industries'], *payload['concepts']['core'],
+                       *payload['concepts']['dynamic']]
+            payload['dataStatus']['completeness'] = math.floor(
+                sum(item['completeness'] for item in objects) / len(objects) + .5)
+            payload['dataStatus']['missing'] = [
+                f"{item.get('id', 'unknown')}:{key}" for item in objects for key in item['missing']]
+            payload['dataStatus']['missing'].append('concepts:collectionUnavailable')
+            payload['dataStatus']['stale'] = True
         # Only explicit safe provenance survives Task 1's derived-field whitelist.
         payload['sourceMode'] = _source_modes(batches)
         stage = 'validate'
@@ -653,7 +880,9 @@ def main(argv=None):
         summary.update(observedAt=result.payload['observedAt'], session=result.payload['session'],
                        completeness=result.payload['dataStatus']['completeness'],
                        objectCounts={'global': 1, 'aShare': 1, 'styles': len(result.payload['styles']),
-                                     'industries': len(result.payload['industries'])},
+                                     'industries': len(result.payload['industries']),
+                                     'coreConcepts': len(result.payload['concepts']['core']),
+                                     'dynamicConcepts': len(result.payload['concepts']['dynamic'])},
                        synthetic=bool(args.fixture))
     if result.error_code:
         summary['errorCode'] = result.error_code

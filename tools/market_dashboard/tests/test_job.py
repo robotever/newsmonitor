@@ -12,6 +12,7 @@ from unittest.mock import patch
 from urllib.error import HTTPError, URLError
 
 from tools.market_dashboard import job
+from tools.market_dashboard.concepts import load_concept_config
 from tools.market_dashboard.scoring import load_config
 
 
@@ -74,12 +75,29 @@ def valid_payload():
                 'completeness': 10, 'missing': ['unavailable'], 'contributors': [],
                 'sourceTimestamps': [{'source': 'Wind', 'timestamp': NOW.isoformat()}],
                 'change1d': None, 'change5d': None}
-    return {'schemaVersion': 'market-dashboard-v1', 'scoringVersion': 'market-score-v0.1',
+    def concept(index, dynamic=False):
+        item = obj(f'884{2000 + index}.WI')
+        item['name'] = f'概念{index}'
+        if dynamic:
+            item.update(selectionScore=60, selectedOn='2026-11-13', retainedTradingDays=1)
+        return item
+    return {'schemaVersion': 'market-dashboard-v2', 'scoringVersion': 'market-score-v0.1',
             'observedAt': NOW.isoformat(), 'marketDate': '2026-11-13', 'session': 'intraday',
             'global': obj('global'), 'aShare': {**obj('a-share'), 'stage': None},
             'styles': [obj(code) for code, _ in job.STYLE_DEFINITIONS],
             'industries': [obj(code) for code, _ in job.INDUSTRY_DEFINITIONS],
+            'concepts': {'selectionVersion': 'concept-selection-v0.1',
+                         'scoringVersion': 'concept-score-v0.1', 'selectedAt': NOW.isoformat(),
+                         'core': [concept(index) for index in range(25)],
+                         'dynamic': [concept(index, True) for index in range(25, 35)]},
             'dataStatus': {'completeness': 10, 'stale': False, 'missing': ['unavailable']}}
+
+
+def v2_payload():
+    payload = valid_payload()
+    payload['sourceMode'] = {'breadth': 'wind', 'styles': 'wind', 'industries': 'wind',
+                             'concepts': 'wind', 'conceptDiscovery': 'mx', 'global': {}}
+    return payload
 
 
 class Response:
@@ -170,7 +188,8 @@ class PublishTests(unittest.TestCase):
 
     def test_cold_start_discount_does_not_require_invented_missing_inputs(self):
         payload = valid_payload()
-        for obj in [payload['global'], payload['aShare'], *payload['styles'], *payload['industries']]:
+        for obj in [payload['global'], payload['aShare'], *payload['styles'], *payload['industries'],
+                    *payload['concepts']['core'], *payload['concepts']['dynamic']]:
             obj.update(strength=50, heat=60, risk=40, completeness=85, missing=[])
         payload['dataStatus'].update(completeness=85, missing=[])
         job.validate_payload(payload)
@@ -216,6 +235,105 @@ class JobTests(unittest.TestCase):
             public = json.dumps(payload, ensure_ascii=False)
             for raw_key in ('rawRows', '_units', '最新成交额', 'SYNTHETIC_GOLD', 'private-token', 'indicators'):
                 self.assertNotIn(raw_key, public)
+
+    def test_v2_fixture_contains_strict_core_and_dynamic_concepts(self):
+        with TemporaryDirectory() as directory:
+            result = job.run_job(self.args(fixture=True, dry_run=True),
+                                 {'state_root': Path(directory)})
+        self.assertTrue(result.success, result.error_code)
+        payload = result.payload
+        self.assertEqual(payload['schemaVersion'], 'market-dashboard-v2')
+        self.assertEqual(len(payload['concepts']['core']), 25)
+        self.assertEqual(len(payload['concepts']['dynamic']), 10)
+        core = {item['id'] for item in payload['concepts']['core']}
+        dynamic = {item['id'] for item in payload['concepts']['dynamic']}
+        self.assertEqual(len(core), 25)
+        self.assertEqual(len(dynamic), 10)
+        self.assertFalse(core & dynamic)
+        self.assertEqual(payload['sourceMode']['concepts'], 'wind')
+        self.assertEqual(payload['sourceMode']['conceptDiscovery'], 'mx')
+        self.assertLessEqual(len(json.dumps(payload, ensure_ascii=False).encode()), 256 * 1024)
+        job.validate_payload(payload)
+
+    def test_v2_validation_rejects_concept_count_overlap_and_metadata_mutations(self):
+        mutations = [
+            lambda p: p['concepts']['core'].pop(),
+            lambda p: p['concepts']['dynamic'].pop(),
+            lambda p: p['concepts']['dynamic'][0].update(id=p['concepts']['core'][0]['id']),
+            lambda p: p['concepts']['dynamic'][0].update(retainedTradingDays=0),
+            lambda p: p['concepts']['dynamic'][0].update(selectionScore=101),
+            lambda p: p['sourceMode'].update(concepts='mx'),
+        ]
+        for mutate in mutations:
+            payload = v2_payload()
+            mutate(payload)
+            with self.subTest(mutation=mutate), self.assertRaises(job.ValidationError):
+                job.validate_payload(payload, load_config())
+
+    def test_concept_collection_failure_preserves_last_selection_or_fails_closed(self):
+        from tools.market_dashboard.sources import SourceBatch
+        with TemporaryDirectory() as directory:
+            deps = self.deps(directory)
+            first = job.run_job(self.args(), deps)
+            self.assertTrue(first.success, first.error_code)
+            previous = first.payload['concepts']
+            def failed_concepts(config):
+                batches = job.collect_batches(config, fixture=True)
+                batches['concepts'] = SourceBatch('Wind', source_mode='wind',
+                    errors=[{'source': 'Wind', 'code': 'backend_error', 'group': 'concepts'}])
+                return batches
+            second = job.run_job(self.args(), deps | {'now': NOW.replace(minute=30),
+                                                       'collector': failed_concepts})
+            self.assertTrue(second.success, second.error_code)
+            self.assertEqual(second.payload['concepts'], previous)
+            self.assertTrue(second.payload['dataStatus']['stale'])
+
+        with TemporaryDirectory() as directory:
+            result = job.run_job(self.args(), self.deps(directory, collector=failed_concepts))
+            self.assertFalse(result.success)
+            self.assertEqual(result.error_code, 'COLLECTION_FAILED')
+
+    def test_close_selection_advances_once_and_duplicate_does_not_collect(self):
+        close = NOW.replace(hour=15, minute=5)
+        def close_batches(config):
+            batches = job.collect_batches(config, fixture=True)
+            for group in ('breadth', 'styles', 'industries', 'concepts'):
+                for row in batches[group].rows:
+                    row['_timestamp'] = '2026-11-13T15:00:02+08:00'
+            return batches
+        with TemporaryDirectory() as directory:
+            deps = self.deps(directory, now=close, collector=close_batches)
+            first = job.run_job(self.args(), deps)
+            self.assertTrue(first.success, first.error_code)
+            retained = [item['retainedTradingDays'] for item in first.payload['concepts']['dynamic']]
+            duplicate = job.run_job(self.args(force=True), deps | {
+                'now': close.replace(minute=20),
+                'collector': lambda config: self.fail('duplicate close collected again'),
+            })
+            self.assertEqual(duplicate.status, 'duplicate')
+            state = json.loads((Path(directory) / 'market-dashboard/last-success.json').read_text())
+            self.assertEqual([item['retainedTradingDays'] for item in state['payload']['concepts']['dynamic']], retained)
+
+    def test_next_day_intraday_reuses_roster_without_advancing_hold_days(self):
+        with TemporaryDirectory() as directory:
+            first = job.run_job(self.args(), self.deps(directory))
+            self.assertTrue(first.success, first.error_code)
+            previous = first.payload['concepts']
+            next_day = NOW.replace(day=16)
+            def next_day_batches(config):
+                batches = job.collect_batches(config, fixture=True)
+                for group in ('breadth', 'styles', 'industries', 'concepts'):
+                    for row in batches[group].rows:
+                        row['_timestamp'] = next_day.isoformat()
+                return batches
+            second = job.run_job(self.args(), self.deps(
+                directory, now=next_day, collector=next_day_batches))
+            self.assertTrue(second.success, second.error_code)
+            self.assertEqual([item['id'] for item in second.payload['concepts']['dynamic']],
+                             [item['id'] for item in previous['dynamic']])
+            self.assertEqual([item['retainedTradingDays'] for item in second.payload['concepts']['dynamic']],
+                             [item['retainedTradingDays'] for item in previous['dynamic']])
+            self.assertEqual(second.payload['concepts']['selectedAt'], previous['selectedAt'])
 
     def test_cold_start_uses_config_and_never_hardcoded_bounds(self):
         config = load_config()
@@ -417,14 +535,16 @@ class JobTests(unittest.TestCase):
         with redirect_stdout(output):
             self.assertEqual(job.main(['--fixture', '--dry-run']), 0)
         summary = json.loads(output.getvalue())
-        self.assertEqual(summary['objectCounts'], {'global': 1, 'aShare': 1, 'styles': 6, 'industries': 35})
+        self.assertEqual(summary['objectCounts'], {'global': 1, 'aShare': 1, 'styles': 6,
+                                                   'industries': 35, 'coreConcepts': 25,
+                                                   'dynamicConcepts': 10})
         self.assertTrue(summary['synthetic'])
         self.assertLess(len(output.getvalue()), 500)
 
     def test_final_close_rejects_intraday_observations_then_is_idempotent(self):
         def close_batches(config, clock):
             batches = job.collect_batches(config, fixture=True)
-            for group in ('breadth', 'styles', 'industries'):
+            for group in ('breadth', 'styles', 'industries', 'concepts'):
                 for row in batches[group].rows:
                     row['_timestamp'] = f'2026-11-13T{clock}:00+08:00'
             return batches

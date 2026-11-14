@@ -1,6 +1,8 @@
 // Public, derived-only contract. Keep identity/version changes paired with the local scorer.
-export const SCHEMA_VERSION = 'market-dashboard-v1'
+export const SCHEMA_VERSION = 'market-dashboard-v2'
 export const SCORING_VERSION = 'market-score-v0.1'
+export const CONCEPT_SELECTION_VERSION = 'concept-selection-v0.1'
+export const CONCEPT_SCORING_VERSION = 'concept-score-v0.1'
 const MAX_BODY_BYTES = 256 * 1024
 const AXES = ['strength', 'heat', 'risk']
 const STYLE_IDS = ['000300.SH', '000852.SH', 'H30356.CSI', '399006.SZ', '000922.CSI', '000688.SH']
@@ -47,7 +49,7 @@ export function timestamp(value) {
 
 export function validatePayload(payload) {
   requireValid(shape(payload, ['schemaVersion', 'scoringVersion', 'observedAt', 'marketDate', 'session',
-    'global', 'aShare', 'styles', 'industries', 'dataStatus'], ['sourceMode']))
+    'global', 'aShare', 'styles', 'industries', 'concepts', 'dataStatus'], ['sourceMode']))
   requireValid(payload.schemaVersion === SCHEMA_VERSION && payload.scoringVersion === SCORING_VERSION)
   const observed = timestamp(payload.observedAt)
   requireValid(typeof payload.marketDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(payload.marketDate) &&
@@ -60,10 +62,34 @@ export function validatePayload(payload) {
     requireValid(Array.isArray(items) && items.length === ids.length && items.every(record))
     requireValid(new Set(items.map(obj => obj.id)).size === ids.length && items.every(obj => ids.includes(obj.id)))
   }
-  const objects = [payload.global, payload.aShare, ...payload.styles, ...payload.industries]
+  const concepts = payload.concepts
+  requireValid(shape(concepts, ['selectionVersion', 'scoringVersion', 'selectedAt', 'core', 'dynamic']) &&
+    concepts.selectionVersion === CONCEPT_SELECTION_VERSION && concepts.scoringVersion === CONCEPT_SCORING_VERSION)
+  timestamp(concepts.selectedAt)
+  requireValid(Array.isArray(concepts.core) && concepts.core.length === 25 && concepts.core.every(record) &&
+    Array.isArray(concepts.dynamic) && concepts.dynamic.length === 10 && concepts.dynamic.every(record))
+  const coreIds = concepts.core.map(obj => obj.id), dynamicIds = concepts.dynamic.map(obj => obj.id)
+  requireValid([...coreIds, ...dynamicIds].every(id => typeof id === 'string' && /^884\d{2,4}\.WI$/.test(id)) &&
+    new Set(coreIds).size === 25 && new Set(dynamicIds).size === 10 && !coreIds.some(id => dynamicIds.includes(id)))
+  for (const obj of concepts.core) {
+    requireValid(!['selectionScore', 'selectedOn', 'retainedTradingDays'].some(key => Object.hasOwn(obj, key)))
+  }
+  for (const obj of concepts.dynamic) {
+    requireValid(numeric(obj.selectionScore) && typeof obj.selectedOn === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(obj.selectedOn) &&
+      Number.isInteger(obj.retainedTradingDays) && obj.retainedTradingDays >= 1)
+    const [year, month, day] = obj.selectedOn.split('-').map(Number)
+    requireValid(year >= 1 && month >= 1 && month <= 12 && day >= 1 &&
+      day <= new Date(Date.UTC(year, month, 0)).getUTCDate())
+  }
+  const objects = [payload.global, payload.aShare, ...payload.styles, ...payload.industries,
+    ...concepts.core, ...concepts.dynamic]
   for (const obj of objects) {
+    if (!concepts.dynamic.includes(obj)) {
+      requireValid(!['selectionScore', 'selectedOn', 'retainedTradingDays'].some(key => Object.hasOwn(obj, key)))
+    }
     requireValid(shape(obj, ['id', ...AXES, 'completeness', 'missing', 'contributors', 'sourceTimestamps', 'change1d', 'change5d'],
-      ['name', 'frequency', 'observedAt', 'stage', 'comparisonFallback', 'comparisonUnavailable']))
+      ['name', 'frequency', 'observedAt', 'stage', 'comparisonFallback', 'comparisonUnavailable',
+        'selectionScore', 'selectedOn', 'retainedTradingDays']))
     requireValid(numeric(obj.completeness) && obj.completeness > 0 && strings(obj.missing))
     requireValid(AXES.every(axis => obj[axis] === null || Number.isInteger(obj[axis]) && numeric(obj[axis])))
     requireValid(AXES.some(axis => obj[axis] !== null))
@@ -98,10 +124,12 @@ export function validatePayload(payload) {
   requireValid(status.completeness > 0 && status.completeness === Math.floor(objects.reduce((sum, obj) => sum + obj.completeness, 0) / objects.length + 0.5))
   if (Object.hasOwn(payload, 'sourceMode')) {
     const modes = payload.sourceMode
-    requireValid(shape(modes, ['breadth', 'styles', 'industries', 'global']) &&
-      ['breadth', 'styles', 'industries'].every(key => modes[key] === 'wind') && record(modes.global))
+    requireValid(shape(modes, ['breadth', 'styles', 'industries', 'concepts', 'conceptDiscovery', 'global']) &&
+      ['breadth', 'styles', 'industries', 'concepts'].every(key => modes[key] === 'wind') &&
+      modes.conceptDiscovery === 'mx' && record(modes.global))
     requireValid(Object.entries(modes.global).every(([key, value]) => /^[\p{L}\p{N}]+$/u.test(key) && ['fred', 'wind', 'mx'].includes(value)))
   }
+  requireValid(new TextEncoder().encode(JSON.stringify(payload)).byteLength <= MAX_BODY_BYTES)
   return observed
 }
 
@@ -156,5 +184,8 @@ export function compactSnapshot(row) {
     observedAt: row.observed_at, marketDate: payload.marketDate, session: payload.session,
     scoringVersion: payload.scoringVersion, global: compact(payload.global), aShare: compact(payload.aShare),
     styles: payload.styles.map(compact), industries: payload.industries.map(compact),
+    concepts: { selectionVersion: payload.concepts.selectionVersion,
+      scoringVersion: payload.concepts.scoringVersion, selectedAt: payload.concepts.selectedAt,
+      core: payload.concepts.core.map(compact), dynamic: payload.concepts.dynamic.map(compact) },
   }
 }

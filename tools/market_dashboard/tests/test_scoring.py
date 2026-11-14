@@ -42,14 +42,16 @@ class FormulaTests(unittest.TestCase):
     def setUp(self):
         self.config = load_config()
 
-    def test_all_four_families_apply_exact_design_weights(self):
+    def test_all_five_families_apply_exact_design_weights(self):
         # One-hot inputs independently expose every configured weight in output.
         expected = {
             'aShare': [[35,25,20,20], [30,25,25,20], [30,25,20,15,10]],
             'global': [[25,30,20,15,10], [30,25,20,15,10], [25,25,20,15,15]],
             'style': [[25,25,20,15,15], [35,25,20,20], [25,25,20,20,10]],
             'industry': [[20,20,15,30,15], [30,30,20,20], [30,25,20,15,10]],
+            'concept': [[20,20,15,30,15], [30,25,15,20,10], [25,25,20,20,10]],
         }
+        self.assertTrue(set(expected) <= set(self.config['families']), 'concept score family is missing')
         for family, score_weights in expected.items():
             for score_name, want_weights in zip(('strength','heat','risk'), score_weights):
                 weights = self.config['families'][family][score_name]
@@ -88,7 +90,7 @@ class FormulaTests(unittest.TestCase):
                   'aShare':{'indicators':indicators}, 'news':[{'title':'ignored','sentiment':0}]}
         original = deepcopy(inputs)
         result = build_dashboard_payload(inputs, [], self.config)
-        self.assertEqual(result['schemaVersion'], 'market-dashboard-v1')
+        self.assertEqual(result['schemaVersion'], 'market-dashboard-v2')
         self.assertEqual(result['scoringVersion'], 'market-score-v0.1')
         self.assertEqual([result['aShare'][k] for k in ('strength','heat','risk')], [80,80,80])
         self.assertEqual(result['aShare']['completeness'],100)

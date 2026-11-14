@@ -11,9 +11,11 @@ const observed = '2026-11-13T10:15:00+08:00'
 const object = (id, fields = {}) => ({ id, name: id, strength: 60, heat: 60, risk: 60, completeness: 80,
   frequency: 'intraday', missing: [], contributors: [], sourceTimestamps: [{ source: 'Wind', timestamp: observed }],
   change1d: null, change5d: null, ...fields })
-const payload = (fields = {}) => ({ schemaVersion: 'market-dashboard-v1', scoringVersion: 'market-score-v0.1',
+const payload = (fields = {}) => ({ schemaVersion: 'market-dashboard-v2', scoringVersion: 'market-score-v0.1',
   observedAt: observed, marketDate: '2026-11-13', session: 'intraday', global: object('global'),
   aShare: object('a-share', { stage: '震荡' }), styles: [], industries: [],
+  concepts: { selectionVersion: 'concept-selection-v0.1', scoringVersion: 'concept-score-v0.1',
+    selectedAt: observed, core: [], dynamic: [] },
   dataStatus: { completeness: 80, stale: false, missing: [] }, ...fields })
 const now = new Date('2026-11-13T02:20:00Z')
 
@@ -158,4 +160,33 @@ test('view preserves input, scores, sourceMode and dataStatus while ordering ind
   assert.deepEqual(view.dataStatus, p.dataStatus)
   assert.equal(view.aShare.stage, '震荡')
   assert.equal(view.aShare.strength, 60)
+})
+
+test('concept presentation preserves configured and selected order with separate deterministic rankings', async () => {
+  const { deriveMarketDashboardView } = await model()
+  const core = [object('8842002.WI', { strength: 20 }), object('8842000.WI', { strength: 80 })]
+  const dynamic = [object('8842030.WI', { heat: 90, selectionScore: 88, selectedOn: '2026-11-13', retainedTradingDays: 1 }),
+    object('8842029.WI', { heat: 20, selectionScore: 70, selectedOn: '2026-11-12', retainedTradingDays: 2,
+      comparisonUnavailable: { change1d: 'missingObservation', change5d: 'missingObservation' } })]
+  const before = structuredClone({ core, dynamic })
+  const view = deriveMarketDashboardView(payload({ concepts: { selectionVersion: 'concept-selection-v0.1',
+    scoringVersion: 'concept-score-v0.1', selectedAt: observed, core, dynamic } }), now)
+  assert.deepEqual(view.coreConcepts.map(item => item.id), ['8842002.WI', '8842000.WI'])
+  assert.deepEqual(view.dynamicConcepts.map(item => item.id), ['8842030.WI', '8842029.WI'])
+  assert.deepEqual(view.conceptRankings.core.strength.map(item => item.id), ['8842000.WI', '8842002.WI'])
+  assert.deepEqual(view.conceptRankings.dynamic.heat.map(item => item.id), ['8842030.WI', '8842029.WI'])
+  assert.equal(view.dynamicConcepts[1].comparisonBadges.change1d, '暂无可比快照')
+  assert.equal(view.dynamicConcepts[0].selectionScore, 88)
+  assert.deepEqual({ core, dynamic }, before)
+})
+
+test('concept freshness and industry rankings remain independent', async () => {
+  const { deriveMarketDashboardView } = await model()
+  const industries = [object('b', { strength: 80 }), object('a', { strength: 20 })]
+  const core = [object('8842000.WI', { observedAt: '2026-11-13T01:00:00Z', strength: 100 })]
+  const view = deriveMarketDashboardView(payload({ industries, concepts: { selectionVersion: 'concept-selection-v0.1',
+    scoringVersion: 'concept-score-v0.1', selectedAt: observed, core, dynamic: [] } }), now)
+  assert.equal(view.coreConcepts[0].freshness.stale, true)
+  assert.deepEqual(view.rankings.strength.map(item => item.id), ['b', 'a'])
+  assert.deepEqual(view.conceptRankings.core.strength.map(item => item.id), ['8842000.WI'])
 })

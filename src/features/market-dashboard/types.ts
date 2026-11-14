@@ -19,8 +19,20 @@ export interface MarketScoreObject extends MarketScoreSummary {
   comparisonFallback?: 'close'
   comparisonUnavailable?: Partial<Record<MarketComparisonKey, MarketComparisonUnavailable>>
 }
+export interface MarketDynamicConcept extends MarketScoreObject {
+  selectionScore: number
+  selectedOn: string
+  retainedTradingDays: number
+}
+export interface MarketConceptsPayload {
+  selectionVersion: 'concept-selection-v0.1'
+  scoringVersion: 'concept-score-v0.1'
+  selectedAt: string
+  core: MarketScoreObject[]
+  dynamic: MarketDynamicConcept[]
+}
 export interface MarketSourceMode {
-  breadth: 'wind'; styles: 'wind'; industries: 'wind'
+  breadth: 'wind'; styles: 'wind'; industries: 'wind'; concepts: 'wind'; conceptDiscovery: 'mx'
   global: Record<string, 'fred' | 'wind' | 'mx'>
 }
 export interface MarketDataStatus { completeness: number; stale: boolean; missing: string[] }
@@ -30,13 +42,14 @@ export interface MarketObservation {
   session: 'intraday' | 'close'
   scoringVersion: 'market-score-v0.1'
 }
-/** Runtime loader enforces global + A-share + exact 6 styles / 35 industries (43 objects). */
+/** Runtime loader enforces 43 market/industry objects plus 25 core and 10 dynamic concepts. */
 export interface MarketDashboardPayload extends MarketObservation {
-  schemaVersion: 'market-dashboard-v1'
+  schemaVersion: 'market-dashboard-v2'
   global: MarketScoreObject
   aShare: MarketScoreObject
   styles: MarketScoreObject[]
   industries: MarketScoreObject[]
+  concepts: MarketConceptsPayload
   dataStatus: MarketDataStatus
   sourceMode?: MarketSourceMode
 }
@@ -45,6 +58,8 @@ export interface MarketHistorySnapshot extends MarketObservation {
   aShare: MarketScoreSummary
   styles: MarketScoreSummary[]
   industries: MarketScoreSummary[]
+  concepts: { selectionVersion: 'concept-selection-v0.1'; scoringVersion: 'concept-score-v0.1';
+    selectedAt: string; core: MarketScoreSummary[]; dynamic: MarketScoreSummary[] }
 }
 export interface MarketHistoryPayload { window: MarketHistoryWindow; snapshots: MarketHistorySnapshot[] }
 export type MarketLoadErrorCode = 'NO_SNAPSHOT' | 'HTTP_ERROR' | 'INVALID_JSON' | 'INVALID_SCHEMA' | 'TIMEOUT' | 'ABORTED' | 'NETWORK_ERROR' | 'INVALID_WINDOW'
@@ -72,17 +87,26 @@ export interface MarketScoreView extends MarketScoreObject, MarketImprovement {
   freshness: MarketFreshness
   comparisonBadges: Record<MarketComparisonKey, string>
 }
+export interface MarketConceptView extends MarketScoreView {
+  selectionScore?: number
+  selectedOn?: string
+  retainedTradingDays?: number
+}
 export interface MarketIndustryRankings<T extends MarketScoreObject = MarketScoreView> {
   strength: (T & MarketImprovement)[]
   heat: (T & MarketImprovement)[]
   risk: (T & MarketImprovement)[]
   improvement: (T & MarketImprovement)[]
 }
-export interface MarketDashboardView extends Omit<MarketDashboardPayload, 'global' | 'aShare' | 'styles' | 'industries'> {
+export interface MarketDashboardView extends Omit<MarketDashboardPayload, 'global' | 'aShare' | 'styles' | 'industries' | 'concepts'> {
   global: MarketScoreView
   aShare: MarketScoreView
   styles: MarketScoreView[]
   industries: MarketScoreView[]
+  concepts: MarketConceptsPayload
+  coreConcepts: MarketConceptView[]
+  dynamicConcepts: MarketConceptView[]
+  conceptRankings: { core: MarketIndustryRankings<MarketConceptView>; dynamic: MarketIndustryRankings<MarketConceptView> }
   freshness: MarketFreshness
   rankings: MarketIndustryRankings
 }

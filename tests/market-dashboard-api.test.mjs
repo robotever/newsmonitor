@@ -20,10 +20,13 @@ function history() {
   const compact = object => Object.fromEntries(['id', 'strength', 'heat', 'risk', 'completeness'].map(key => [key, object[key]]))
   return { window: '5d', snapshots: [{ observedAt: fixture.observedAt, marketDate: fixture.marketDate,
     session: fixture.session, scoringVersion: fixture.scoringVersion, global: compact(fixture.global),
-    aShare: compact(fixture.aShare), styles: fixture.styles.map(compact), industries: fixture.industries.map(compact) }] }
+    aShare: compact(fixture.aShare), styles: fixture.styles.map(compact), industries: fixture.industries.map(compact),
+    concepts: { selectionVersion: fixture.concepts.selectionVersion,
+      scoringVersion: fixture.concepts.scoringVersion, selectedAt: fixture.concepts.selectedAt,
+      core: fixture.concepts.core.map(compact), dynamic: fixture.concepts.dynamic.map(compact) } }] }
 }
 
-test('latest loads real Task 3 nullable 43-object payload without changing its metadata', async () => {
+test('latest loads real Task 3 nullable 78-object payload without changing its metadata', async () => {
   const { loadMarketDashboard } = await api()
   const result = await loadMarketDashboard(async (url, init) => {
     assert.equal(url, '/api/market-dashboard/latest')
@@ -33,7 +36,8 @@ test('latest loads real Task 3 nullable 43-object payload without changing its m
   assert.equal(result.error, null)
   assert.deepEqual(result.data, fixture)
   assert.equal(result.data.global.heat, null)
-  assert.equal(result.data.styles.length + result.data.industries.length + 2, 43)
+  assert.equal(result.data.styles.length + result.data.industries.length
+    + result.data.concepts.core.length + result.data.concepts.dynamic.length + 2, 78)
 })
 
 test('404 NO_SNAPSHOT is distinct from generic HTTP errors and redacts server text', async () => {
@@ -55,9 +59,19 @@ test('invalid JSON, empty success and malformed latest schema remain distinct sa
   assert.equal((await loadMarketDashboard(async () => response(null))).error.code, 'INVALID_SCHEMA')
   const mutations = [
     p => { p.industries.pop() }, p => { p.styles[0].id = p.styles[1].id },
+    p => { p.schemaVersion = 'market-dashboard-v1' },
+    p => { p.concepts.core.pop() }, p => { p.concepts.dynamic.pop() },
+    p => { p.concepts.dynamic[0].id = p.concepts.core[0].id },
+    p => { p.concepts.selectionVersion = 'unknown' }, p => { p.concepts.scoringVersion = 'unknown' },
+    p => { p.concepts.selectedAt = 'invalid' }, p => { p.concepts.core[0].selectionScore = 50 },
+    p => { p.concepts.dynamic[0].selectionScore = 101 },
+    p => { p.concepts.dynamic[0].selectedOn = '2026-02-30' },
+    p => { p.concepts.dynamic[0].retainedTradingDays = 0 },
+    p => { p.aShare.selectionScore = 50 },
     p => { p.global.strength = '59' }, p => { p.aShare.risk = 101 },
     p => { p.aShare.completeness = null }, p => { p.global.sourceTimestamps = [] },
-    p => { p.sourceMode.global.gold = 'unknown' }, p => { p.dataStatus.stale = 'false' },
+    p => { p.sourceMode.global.gold = 'unknown' }, p => { p.sourceMode.concepts = 'mx' },
+    p => { p.sourceMode.conceptDiscovery = 'wind' }, p => { p.dataStatus.stale = 'false' },
     p => { p.global.change5d = { strength: 1 } }, p => { p.observedAt = '2026-02-30T10:15:00+08:00' },
     p => { p.scoringVersion = 'next-version' }, p => { p.aShare.stage = '扩张' },
   ]

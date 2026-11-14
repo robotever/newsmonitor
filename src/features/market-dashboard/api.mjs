@@ -11,6 +11,14 @@ const shape = (value, required, optional = []) => record(value) && required.ever
   && Object.keys(value).every(key => required.includes(key) || optional.includes(key))
 const number = (value, min = 0, max = 100) => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
 const strings = value => Array.isArray(value) && value.every(item => typeof item === 'string' && item.length <= 200)
+const noSelection = value => !['selectionScore', 'selectedOn', 'retainedTradingDays'].some(key => Object.hasOwn(value, key))
+const calendarDate = value => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (!match) return false
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3])
+  return year >= 1 && month >= 1 && month <= 12 && day >= 1
+    && day <= new Date(Date.UTC(year, month, 0)).getUTCDate()
+}
 
 function timestamp(value) {
   if (typeof value !== 'string') return false
@@ -38,7 +46,8 @@ function validChange(value) {
 }
 function validObject(value) {
   return shape(value, ['id', ...AXES, 'completeness', 'missing', 'contributors', 'sourceTimestamps', 'change1d', 'change5d'],
-    ['name', 'frequency', 'observedAt', 'stage', 'comparisonFallback', 'comparisonUnavailable'])
+    ['name', 'frequency', 'observedAt', 'stage', 'comparisonFallback', 'comparisonUnavailable',
+      'selectionScore', 'selectedOn', 'retainedTradingDays'])
     && validScores(value) && strings(value.missing)
     && (!Object.hasOwn(value, 'name') || typeof value.name === 'string' && value.name.length <= 100)
     && (!Object.hasOwn(value, 'frequency') || ['intraday', 'daily', 'monthly'].includes(value.frequency))
@@ -56,6 +65,18 @@ function validObject(value) {
     && (!Object.hasOwn(value, 'comparisonUnavailable') || shape(value.comparisonUnavailable, [], ['change1d', 'change5d'])
       && Object.values(value.comparisonUnavailable).every(reason => UNAVAILABLE.includes(reason)))
 }
+function validConcepts(value, validator, compact = false) {
+  if (!shape(value, ['selectionVersion', 'scoringVersion', 'selectedAt', 'core', 'dynamic'])
+    || value.selectionVersion !== 'concept-selection-v0.1' || value.scoringVersion !== 'concept-score-v0.1'
+    || !timestamp(value.selectedAt) || !Array.isArray(value.core) || value.core.length !== 25
+    || !Array.isArray(value.dynamic) || value.dynamic.length !== 10) return false
+  const ids = [...value.core, ...value.dynamic].map(item => item?.id)
+  if (new Set(ids).size !== 35 || !ids.every(id => typeof id === 'string' && /^884\d{2,4}\.WI$/.test(id))) return false
+  if (!value.core.every(item => validator(item) && noSelection(item))) return false
+  return value.dynamic.every(item => validator(item) && (compact || number(item.selectionScore)
+    && calendarDate(item.selectedOn)
+    && Number.isInteger(item.retainedTradingDays) && item.retainedTradingDays >= 1))
+}
 function validObjects(value, validator) {
   return record(value.global) && value.global.id === 'global' && validator(value.global)
     && record(value.aShare) && value.aShare.id === 'a-share' && validator(value.aShare)
@@ -64,23 +85,28 @@ function validObjects(value, validator) {
       && value[key].every(item => ids.includes(item?.id) && validator(item)))
 }
 function validLatest(value) {
-  if (!shape(value, ['schemaVersion', 'scoringVersion', 'observedAt', 'marketDate', 'session', 'global', 'aShare', 'styles', 'industries', 'dataStatus'], ['sourceMode'])
-    || value.schemaVersion !== 'market-dashboard-v1' || !validObservation(value) || !validObjects(value, validObject)) return false
+  if (!shape(value, ['schemaVersion', 'scoringVersion', 'observedAt', 'marketDate', 'session', 'global', 'aShare', 'styles', 'industries', 'concepts', 'dataStatus'], ['sourceMode'])
+    || value.schemaVersion !== 'market-dashboard-v2' || !validObservation(value)
+    || !validObjects(value, item => validObject(item) && noSelection(item))
+    || !validConcepts(value.concepts, validObject)) return false
   const status = value.dataStatus
-  const objects = [value.global, value.aShare, ...value.styles, ...value.industries]
+  const objects = [value.global, value.aShare, ...value.styles, ...value.industries,
+    ...value.concepts.core, ...value.concepts.dynamic]
   if (!shape(status, ['completeness', 'stale', 'missing']) || !number(status.completeness) || typeof status.stale !== 'boolean'
-    || !strings(status.missing) || status.completeness !== Math.floor(objects.reduce((sum, item) => sum + item.completeness, 0) / 43 + 0.5)
+    || !strings(status.missing) || status.completeness !== Math.floor(objects.reduce((sum, item) => sum + item.completeness, 0) / 78 + 0.5)
     || status.completeness <= 0) return false
   if (!Object.hasOwn(value, 'sourceMode')) return true
   const modes = value.sourceMode
-  return shape(modes, ['breadth', 'styles', 'industries', 'global'])
-    && ['breadth', 'styles', 'industries'].every(key => modes[key] === 'wind') && record(modes.global)
+  return shape(modes, ['breadth', 'styles', 'industries', 'concepts', 'conceptDiscovery', 'global'])
+    && ['breadth', 'styles', 'industries', 'concepts'].every(key => modes[key] === 'wind')
+    && modes.conceptDiscovery === 'mx' && record(modes.global)
     && Object.entries(modes.global).every(([key, provider]) => /^[\p{L}\p{N}]+$/u.test(key) && ['fred', 'wind', 'mx'].includes(provider))
 }
 function validHistory(value, window) {
   return shape(value, ['window', 'snapshots']) && value.window === window && Array.isArray(value.snapshots) && value.snapshots.length > 0
-    && value.snapshots.every((snapshot, i) => shape(snapshot, ['observedAt', 'marketDate', 'session', 'scoringVersion', 'global', 'aShare', 'styles', 'industries'])
+    && value.snapshots.every((snapshot, i) => shape(snapshot, ['observedAt', 'marketDate', 'session', 'scoringVersion', 'global', 'aShare', 'styles', 'industries', 'concepts'])
       && validObservation(snapshot) && validObjects(snapshot, object => shape(object, ['id', ...AXES, 'completeness']) && validScores(object))
+      && validConcepts(snapshot.concepts, object => shape(object, ['id', ...AXES, 'completeness']) && validScores(object), true)
       && (i === 0 || Date.parse(snapshot.observedAt) >= Date.parse(value.snapshots[i - 1].observedAt)))
 }
 const messages = {
