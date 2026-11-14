@@ -4,6 +4,7 @@ import io
 import subprocess
 from contextlib import redirect_stdout
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from tools.market_dashboard import sources
 from tools.market_dashboard.concepts import concept_definitions, load_concept_config
@@ -293,6 +294,23 @@ class SourceTests(unittest.TestCase):
 
 
 class GlobalSourceTests(unittest.TestCase):
+    def test_fetch_csv_uses_verified_ca_bundle_without_disabling_tls(self):
+        import ssl
+        calls = []
+        class Response:
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def read(self): return b'observation_date,DGS10\n2026-11-13,4.2\n'
+        def open_url(url, **kwargs):
+            calls.append((url, kwargs))
+            return Response()
+        with patch('urllib.request.urlopen', open_url):
+            body = sources.fetch_csv('https://fred.stlouisfed.org/example.csv')
+        self.assertIn('observation_date', body)
+        context = calls[0][1]['context']
+        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(context.check_hostname)
+
     def config(self, metrics):
         return {"sources": {"now": "2026-11-13T10:15:00+08:00", "global": {"metrics": metrics}}}
 

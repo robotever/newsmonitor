@@ -337,8 +337,14 @@ def parse_fred_csv(text, series):
 
 
 def fetch_csv(url):
+    import ssl
     from urllib.request import urlopen
-    with urlopen(url, timeout=20) as response:
+    try:
+        import certifi
+        context = ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        context = ssl.create_default_context()
+    with urlopen(url, timeout=20, context=context) as response:
         return response.read().decode('utf-8-sig')
 
 

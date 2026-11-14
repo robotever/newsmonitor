@@ -324,6 +324,8 @@
   .market-ranking__name small { display: block; font-size: 8px; color: #819bac; }
   .market-ranking strong { color: #a5d4e2; font: 11px ui-monospace, monospace; }
   .market-concepts { border-top: 1px solid var(--market-line); padding-top: 2px; }
+  .market-concepts__heading { align-items: flex-start; }
+  .market-concepts__heading > div { min-width: 0; }
   .market-concepts__heading > div p { margin-top: 3px; color: #8199aa; font-size: 9px; }
   .market-concepts__heading > time { color: #879faf; font-size: 9px; }
   .market-concepts__summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; margin-bottom: 7px; }
@@ -377,8 +379,8 @@
   .market-heatmap { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
   .market-concept-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
   .market-concept[open] { grid-column: 1 / -1; }
-  .market-concepts__heading { align-items: start; }
-  .market-concepts__heading > time { max-width: 110px; text-align: right; }
+  .market-concepts__heading { align-items: start; display: grid; }
+  .market-concepts__heading > time { max-width: none; text-align: left; }
   .market-rankings { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .market-industry[open] { grid-column: 1 / -1; }
   .market-section-heading > span { max-width: 130px; text-align: right; }
